@@ -1,6 +1,6 @@
 'use client';
 import React, { useState } from 'react';
-
+import { supabase } from './src/lib/supabase';
 // الملاعب الافتراضية
 const initialCourts = [
   { id: '1', name: 'ملعب العيون', pricePerHour: 200 },
@@ -162,32 +162,65 @@ export default function Home() {
   };
 
   const totalPrice = calculatePrice();
-
-  const handleConfirmBooking = (e: React.FormEvent) => {
+  const fetchBookings = async () => {
+  const { data, error } = await supabase.from('bookings').select('*');
+  if (error) {
+    console.error('خطأ في جلب الحجوزات:', error);
+  } else {
+    // تحديث State الحجوزات هنا
+    // setBookings(data);
+  }
+};
+  const handleConfirmBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCourt || hasConflict || !customerName || !customerPhone) return;
+    
+    console.log("1. تم الضغط على زر الحجز...");
+    console.log("البيانات الحالية:", { selectedCourt, customerName, customerPhone, bookingDate, startSlot });
+
+    if (!selectedCourt || !customerName || !customerPhone) {
+      alert("يرجى تعبئة جميع البيانات (الاسم ورقم الهاتف واختيار الملعب)");
+      return;
+    }
 
     const extrasArray = [];
-    if (addBall) extrasArray.push('كرة');
+    if (addBall) extrasArray.push('طابة');
     if (addGloves) extrasArray.push('كفوف حارس');
     if (addVests) extrasArray.push('شيالات');
 
-    const newBooking: Booking = {
-      id: Date.now().toString(),
-      courtId: selectedCourt.id,
-      courtName: selectedCourt.name,
-      customerName,
-      customerPhone,
+    const newBooking = {
+      court_id: String(selectedCourt.id),
+      court_name: selectedCourt.name,
+      customer_name: customerName,
+      customer_phone: customerPhone,
       date: bookingDate,
-      startSlot,
-      durationMinutes,
-      reservedSlots: selectedRange,
-      totalPrice,
+      start_slot: startSlot,
+      duration_minutes: durationMinutes,
+      reserved_slots: selectedRange,
+      total_price: totalPrice,
       extras: extrasArray,
     };
 
-    setBookings([...bookings, newBooking]);
-    setBookingSuccess(true);
+    console.log("2. جاري الإرسال إلى Supabase...", newBooking);
+
+    try {
+      const { data, error } = await supabase
+        .from('bookings')
+        .insert([newBooking])
+        .select();
+
+      if (error) {
+        console.error('3. خطأ قادم من Supabase:', error);
+        alert(`فشل الحفظ في Supabase! السبب: ${error.message} (الكود: ${error.code})`);
+      } else {
+        console.log('3. تم الحفظ بنجاح!', data);
+        alert("تم الحجز بنجاح وحفظه في قاعدة البيانات!");
+        setBookingSuccess(true);
+        fetchBookings();
+      }
+    } catch (err) {
+      console.error('خطأ غير متوقع:', err);
+      alert('حدث خطأ بالاتصال بالشبكة أو Supabase');
+    }
   };
 
   const handleDeleteBooking = (id: string) => {
