@@ -26,8 +26,8 @@ interface Booking {
 
 // الملاعب المتاحة
 const COURTS: Court[] = [
-  { id: '1', name: 'ملعب السنديان', price: 200 },
-  { id: '2', name: 'ملعب الوفاق', price: 200 },
+  { id: '1', name: 'ملعب العيون', price: 200 },
+  { id: '2', name: 'ملعب الشاغور', price: 200 },
   { id: '3', name: 'ملعب البانياس', price: 200 },
 ];
 
