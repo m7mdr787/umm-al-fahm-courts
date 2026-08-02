@@ -40,3 +40,10 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: '/((?!api|_next/static|_next/image|favicon.ico).*)',
 };
+
+// تأكد إنك بتجيب الداتا بدون Cache
+const { data, error } = await supabase
+  .from('system_settings')
+  .select('is_maintenance')
+  .eq('id', 'global')
+  .single();
