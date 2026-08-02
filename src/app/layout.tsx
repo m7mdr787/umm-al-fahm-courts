@@ -7,6 +7,10 @@ export const metadata: Metadata = {
   
   // 2. وصف مختصر للموقع (بيظهر في نتائج بحث جوجل)
   description: "الموقع الرسمي لحجز ملاعب في أم الفحم. اختر الوقت المناسب واحجز ملاعبك بسهولة.",
+
+  icons: {
+    icon: "/icon", // هاد بيوجه Next.js ينادي ملف icon.tsx مباشرة
+  },
 };
 
 export default function RootLayout({
