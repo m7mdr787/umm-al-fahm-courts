@@ -11,13 +11,17 @@ import {
   MessageCircle, 
   ShieldAlert, 
   Sparkles,
-  Shirt
+  Shirt,
+  MapPin
 } from 'lucide-react';
 
 export default function BookingPage() {
+  // اختيار الملعب (الشاغور / العيون / البانياس)
+  const [selectedStadium, setSelectedStadium] = useState<string>('eloyoun');
   const [selectedDate, setSelectedDate] = useState('2026-08-03');
-  const [duration, setDuration] = useState<number>(90); // Default: 90 mins (ساعة ونصف)
+  const [duration, setDuration] = useState<number>(90); // 90 min default
   const [startTime, setStartTime] = useState<string>('08:00');
+  
   const [selectedExtras, setSelectedExtras] = useState<{ [key: string]: boolean }>({
     ball: false,
     gloves: false,
@@ -29,7 +33,14 @@ export default function BookingPage() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportText, setReportText] = useState('');
 
-  // قائمة الأوقات المتاحة
+  // قائمة الملاعب المتاحة
+  const stadiums = [
+    { id: 'eloyoun', name: 'ملعب العيون', desc: 'عشب صناعي ممتاز - إضاءة حديثة' },
+    { id: 'shaghour', name: 'ملعب الشاغور', desc: 'أرضية قانونية وسيعة - مدرجات' },
+    { id: 'banyas', name: 'ملعب البانياس', desc: 'أجواء ممتازة وتجهيزات كاملة' },
+  ];
+
+  // الأوقات المتاحة
   const timeSlots = [
     '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
     '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
@@ -38,7 +49,7 @@ export default function BookingPage() {
     '20:00', '20:30', '21:00', '21:30', '22:00', '22:30'
   ];
 
-  // حساب أسعار المدة
+  // تسعير المدة
   const getBasePrice = (dur: number) => {
     switch (dur) {
       case 60: return 150;
@@ -48,14 +59,8 @@ export default function BookingPage() {
     }
   };
 
-  // أسعار الإضافات
-  const extrasPrices = {
-    ball: 20,
-    gloves: 15,
-    vests: 15,
-  };
+  const extrasPrices = { ball: 20, gloves: 15, vests: 15 };
 
-  // حساب السعر الإجمالي
   const calculateTotal = () => {
     let total = getBasePrice(duration);
     if (selectedExtras.ball) total += extrasPrices.ball;
@@ -64,7 +69,6 @@ export default function BookingPage() {
     return total;
   };
 
-  // حساب وقت الانتهاء تلقائياً لتقديمه بشكل (من - إلى)
   const formatTimeSlot = (start: string, durMinutes: number) => {
     const [hours, minutes] = start.split(':').map(Number);
     const date = new Date();
@@ -77,23 +81,33 @@ export default function BookingPage() {
     return `${start} - ${endHours}:${endMinutes}`;
   };
 
-  const handleExtraToggle = (key: string) => {
-    setSelectedExtras(prev => ({ ...prev, [key]: !prev[key] }));
+  // إرسال البلاغ للواتساب مباشر
+  const handleSendReport = () => {
+    if (!reportText.trim()) return alert('الرجاء كتابة تفاصيل البلاغ');
+    
+    const currentStadiumName = stadiums.find(s => s.id === selectedStadium)?.name;
+    const message = `⚠️ *بلاغ عن مشكلة في ${currentStadiumName}*%0A%0A*تفاصيل المشكلة:* ${reportText}%0A*التاريخ:* ${selectedDate}`;
+    
+    // فتح الواتساب للرقم الخاص بك
+    window.open(`https://wa.me/972503477552?text=${message}`, '_blank');
+    setShowReportModal(false);
+    setReportText('');
   };
 
   return (
     <div dir="rtl" className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-24">
-      {/* Header / Hero Section */}
+      
+      {/* Header */}
       <header className="relative bg-gradient-to-b from-emerald-900 to-slate-900 pt-10 pb-16 px-4 text-center border-b border-emerald-500/20">
         <div className="max-w-3xl mx-auto">
           <span className="inline-flex items-center gap-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-full text-xs font-bold mb-4">
-            <Sparkles className="w-3.5 h-3.5" /> نظام الحجز الإلكتروني السريع
+            <Sparkles className="w-3.5 h-3.5" /> حجز ملاعب أم الفحم أونلاين
           </span>
           <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight mb-2">
-            ملعب العيون <span className="text-emerald-400">العشبي</span>
+            احجز ملعبك <span className="text-emerald-400">بسهولة وسرعة</span>
           </h1>
           <p className="text-slate-300 text-sm sm:text-base font-medium">
-            اختر وقتك المناسب واحجز الملعب بخطوات بسيطة
+            اختر الملعب والوقت المناسب وسدد إلكترونياً أو عند الوصول
           </p>
         </div>
       </header>
@@ -102,9 +116,42 @@ export default function BookingPage() {
       <main className="max-w-4xl mx-auto px-4 -mt-8">
         <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 border border-slate-200 text-slate-900 space-y-8">
           
-          {/* Section 1: Date & Duration */}
+          {/* Section 0: اختيار الملعب */}
+          <div>
+            <label className="block text-slate-900 font-black text-base mb-3 flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-emerald-600" /> اختر الملعب المطلوب:
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {stadiums.map((stadium) => {
+                const isSelected = selectedStadium === stadium.id;
+                return (
+                  <button
+                    key={stadium.id}
+                    type="button"
+                    onClick={() => setSelectedStadium(stadium.id)}
+                    className={`p-4 rounded-xl border text-right transition-all flex flex-col justify-between cursor-pointer ${
+                      isSelected
+                        ? 'border-emerald-600 bg-emerald-50/80 shadow-md ring-2 ring-emerald-600/20'
+                        : 'border-slate-300 bg-slate-50 hover:border-slate-400'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-black text-slate-900 text-base">{stadium.name}</span>
+                        {isSelected && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
+                      </div>
+                      <p className="text-xs font-semibold text-slate-600">{stadium.desc}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <hr className="border-slate-200" />
+
+          {/* Section 1: التاريخ والمدة */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* تاريخ الحجز */}
             <div>
               <label className="block text-slate-900 font-bold text-sm mb-2 flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-emerald-600" /> تاريخ الحجز:
@@ -117,10 +164,9 @@ export default function BookingPage() {
               />
             </div>
 
-            {/* مدة الحجز */}
             <div>
               <label className="block text-slate-900 font-bold text-sm mb-2 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-emerald-600" /> مدة الحجز والعرُض:
+                <Clock className="w-4 h-4 text-emerald-600" /> مدة الحجز والسعر:
               </label>
               <select 
                 value={duration}
@@ -136,19 +182,18 @@ export default function BookingPage() {
 
           <hr className="border-slate-200" />
 
-          {/* Section 2: Choose Start Time */}
+          {/* Section 2: اختيار الوقت (من - إلى) */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <label className="text-slate-900 font-bold text-base flex items-center gap-2">
-                <Clock className="w-5 h-5 text-emerald-600" /> اختر الوقت المناسب (من - إلى):
+                <Clock className="w-5 h-5 text-emerald-600" /> اختر الوقت المناسب:
               </label>
-              <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md">
-                المدة الحالية: {duration} دقيقة
+              <span className="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-md">
+                المدة: {duration} دقيقة
               </span>
             </div>
 
-            {/* Grid of Time Slots */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-80 overflow-y-auto p-1 scrollbar-thin">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-80 overflow-y-auto p-1">
               {timeSlots.map((time) => {
                 const formattedRange = formatTimeSlot(time, duration);
                 const isSelected = startTime === time;
@@ -158,10 +203,10 @@ export default function BookingPage() {
                     key={time}
                     type="button"
                     onClick={() => setStartTime(time)}
-                    className={`p-3 rounded-xl text-xs sm:text-sm font-bold border transition-all duration-150 text-center flex flex-col items-center justify-center gap-1 ${
+                    className={`p-3 rounded-xl text-xs sm:text-sm font-bold border transition-all text-center flex flex-col items-center justify-center gap-1 cursor-pointer ${
                       isSelected 
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/30 scale-[1.02]' 
-                        : 'bg-slate-50 text-slate-800 border-slate-300 hover:border-emerald-500 hover:bg-emerald-50'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-md scale-[1.02]' 
+                        : 'bg-slate-50 text-slate-900 border-slate-300 hover:border-emerald-500 hover:bg-emerald-50'
                     }`}
                   >
                     <span>{formattedRange}</span>
@@ -173,59 +218,53 @@ export default function BookingPage() {
 
           <hr className="border-slate-200" />
 
-          {/* Section 3: Equipment */}
+          {/* Section 3: المعدات الإضافية */}
           <div>
             <label className="block text-slate-900 font-bold text-base mb-3 flex items-center gap-2">
-              <Shirt className="w-5 h-5 text-emerald-600" /> معدات وتجهيزات إضافية:
+              <Shirt className="w-5 h-5 text-emerald-600" /> معدات إضافية:
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               
-              {/* طابة */}
-              <label className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer transition-all ${
+              <label className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer ${
                 selectedExtras.ball ? 'border-emerald-600 bg-emerald-50/50' : 'border-slate-300 bg-slate-50'
               }`}>
                 <div className="flex items-center gap-2">
                   <input 
                     type="checkbox" 
                     checked={selectedExtras.ball} 
-                    onChange={() => handleExtraToggle('ball')}
-                    className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500" 
+                    onChange={() => setSelectedExtras(p => ({ ...p, ball: !p.ball }))}
+                    className="w-4 h-4 text-emerald-600 rounded" 
                   />
-                  <span className="font-bold text-slate-900 text-sm">كرة طابة إضافية</span>
+                  <span className="font-bold text-slate-900 text-sm">كرة طابة (+20 ₪)</span>
                 </div>
-                <span className="text-xs font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">+20 ₪</span>
               </label>
 
-              {/* كفوف حارس */}
-              <label className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer transition-all ${
+              <label className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer ${
                 selectedExtras.gloves ? 'border-emerald-600 bg-emerald-50/50' : 'border-slate-300 bg-slate-50'
               }`}>
                 <div className="flex items-center gap-2">
                   <input 
                     type="checkbox" 
                     checked={selectedExtras.gloves} 
-                    onChange={() => handleExtraToggle('gloves')}
-                    className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500" 
+                    onChange={() => setSelectedExtras(p => ({ ...p, gloves: !p.gloves }))}
+                    className="w-4 h-4 text-emerald-600 rounded" 
                   />
-                  <span className="font-bold text-slate-900 text-sm">كفوف حارس</span>
+                  <span className="font-bold text-slate-900 text-sm">كفوف حارس (+15 ₪)</span>
                 </div>
-                <span className="text-xs font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">+15 ₪</span>
               </label>
 
-              {/* شيالات / زي توجيه */}
-              <label className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer transition-all ${
+              <label className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer ${
                 selectedExtras.vests ? 'border-emerald-600 bg-emerald-50/50' : 'border-slate-300 bg-slate-50'
               }`}>
                 <div className="flex items-center gap-2">
                   <input 
                     type="checkbox" 
                     checked={selectedExtras.vests} 
-                    onChange={() => handleExtraToggle('vests')}
-                    className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500" 
+                    onChange={() => setSelectedExtras(p => ({ ...p, vests: !p.vests }))}
+                    className="w-4 h-4 text-emerald-600 rounded" 
                   />
-                  <span className="font-bold text-slate-900 text-sm">شيالات / شواخص</span>
+                  <span className="font-bold text-slate-900 text-sm">شيالات (+15 ₪)</span>
                 </div>
-                <span className="text-xs font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">+15 ₪</span>
               </label>
 
             </div>
@@ -233,7 +272,7 @@ export default function BookingPage() {
 
           <hr className="border-slate-200" />
 
-          {/* Section 4: Personal Info */}
+          {/* Section 4: معلومات الحاجز */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-slate-900 font-bold text-sm mb-1.5 flex items-center gap-1.5">
@@ -244,7 +283,7 @@ export default function BookingPage() {
                 placeholder="أدخل اسمك الكريم"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-bold rounded-xl px-4 py-3 placeholder:text-slate-400 placeholder:font-normal focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-bold rounded-xl px-4 py-3 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>
 
@@ -257,73 +296,73 @@ export default function BookingPage() {
                 placeholder="05X-XXXXXXX"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-bold rounded-xl px-4 py-3 placeholder:text-slate-400 placeholder:font-normal focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-bold rounded-xl px-4 py-3 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>
           </div>
 
-          {/* Sticky Total Summary & Submit */}
+          {/* Summary Card */}
           <div className="bg-slate-900 text-white rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 border border-slate-800 shadow-xl">
             <div>
-              <span className="text-slate-400 text-xs font-bold block mb-0.5">تفاصيل المبلغ المطلوب:</span>
+              <span className="text-slate-400 text-xs font-bold block mb-0.5">الملعب والمبلغ النهائي:</span>
               <div className="flex items-baseline gap-2">
                 <span className="text-3xl font-black text-emerald-400">{calculateTotal()} ₪</span>
-                <span className="text-xs text-slate-300">({duration} دقيقة + الإضافات)</span>
+                <span className="text-xs text-slate-300">({stadiums.find(s => s.id === selectedStadium)?.name})</span>
               </div>
               <span className="text-xs text-slate-400 block mt-1">
-                الوقت المحدد: <strong className="text-white">{formatTimeSlot(startTime, duration)}</strong>
+                الوقت: <strong className="text-white">{formatTimeSlot(startTime, duration)}</strong>
               </span>
             </div>
 
             <button 
               type="button"
-              className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-base px-8 py-3.5 rounded-xl transition-all shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+              className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-base px-8 py-3.5 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-95"
             >
-              <CheckCircle2 className="w-5 h-5" /> تأكيد وإرسال الحجز
+              <CheckCircle2 className="w-5 h-5" /> تأكيد الحجز
             </button>
           </div>
 
         </div>
 
-        {/* Footer Quick Action Tools */}
+        {/* Footer Actions */}
         <div className="mt-6 flex flex-wrap items-center justify-between gap-4 text-slate-400 text-xs px-2">
           <button 
             onClick={() => setShowReportModal(true)}
             className="flex items-center gap-1.5 text-rose-400 hover:text-rose-300 font-bold transition-colors cursor-pointer bg-rose-500/10 border border-rose-500/20 px-3 py-2 rounded-lg"
           >
-            <ShieldAlert className="w-4 h-4" /> الإبلاغ عن مشكلة أو كسر بالملعب
+            <ShieldAlert className="w-4 h-4" /> الإبلاغ عن مشكلة بالملعب
           </button>
 
-          <span>© جميع الحقوق محفوظة - ملعب العيون</span>
+          <span>© إدارات ملاعب أم الفحم</span>
         </div>
       </main>
 
-      {/* Floating WhatsApp Quick Contact */}
+      {/* Floating WhatsApp Chat (رقمك المباشر) */}
       <a 
-        href="https://wa.me/9720500000000" // ضع رقم الواتساب الخاص بالملعب هنا
+        href="https://wa.me/972503477552" 
         target="_blank" 
         rel="noopener noreferrer"
-        className="fixed bottom-6 left-6 bg-emerald-500 hover:bg-emerald-400 text-slate-950 p-3.5 rounded-full shadow-2xl shadow-emerald-500/50 flex items-center gap-2 font-bold text-sm z-50 transition-all hover:scale-110"
+        className="fixed bottom-6 left-6 bg-emerald-500 hover:bg-emerald-400 text-slate-950 p-3.5 rounded-full shadow-2xl flex items-center gap-2 font-bold text-sm z-50 transition-all hover:scale-110"
       >
         <MessageCircle className="w-6 h-6 fill-slate-950" />
-        <span className="hidden sm:inline">استفسار سريع</span>
+        <span className="hidden sm:inline">واتساب مباشر</span>
       </a>
 
-      {/* Report Issue Modal */}
+      {/* Report Modal */}
       {showReportModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white text-slate-900 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
             <div className="flex items-center gap-2 text-rose-600 font-bold text-lg">
-              <AlertTriangle className="w-6 h-6" /> الإبلاغ عن مشكلة بالملعب
+              <AlertTriangle className="w-6 h-6" /> إرسال بلاغ عن {stadiums.find(s => s.id === selectedStadium)?.name}
             </div>
             <p className="text-slate-600 text-xs leading-relaxed">
-              تصل هذه الرسالة لإدارة الملعب فوراً، يمكنك الإبلاغ عن إضاءة تعطلت، أو معدات مفقودة، أو أي ملاحظة.
+              سيتم إرسال هذا البلاغ مباشرة لإدارة الملعب عبر الواتساب للمتابعة الفورية.
             </p>
             <textarea 
               rows={4}
               value={reportText}
               onChange={(e) => setReportText(e.target.value)}
-              placeholder="اكتب تفاصيل المشكلة هنا..."
+              placeholder="اكتب تفاصيل المشكلة أو العطل..."
               className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-sm text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-rose-500"
             />
             <div className="flex items-center justify-end gap-2">
@@ -334,14 +373,10 @@ export default function BookingPage() {
                 إلغاء
               </button>
               <button 
-                onClick={() => {
-                  alert('تم إرسال بلاغك للإدارة بنجاح. شكراً لاهتمامك!');
-                  setShowReportModal(false);
-                  setReportText('');
-                }}
-                className="px-5 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-lg shadow-md shadow-rose-600/30"
+                onClick={handleSendReport}
+                className="px-5 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-lg shadow-md"
               >
-                إرسال البلاغ
+                إرسال عبر الواتساب
               </button>
             </div>
           </div>
