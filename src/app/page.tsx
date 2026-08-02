@@ -1,352 +1,353 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { supabase } from './src/lib/supabase';
+import React, { useState } from 'react';
+import { 
+  Calendar, 
+  Clock, 
+  User, 
+  Phone, 
+  CheckCircle2, 
+  AlertTriangle, 
+  MessageCircle, 
+  ShieldAlert, 
+  Sparkles,
+  Shirt
+} from 'lucide-react';
 
-// 1. واجهات البيانات (Interfaces)
-interface Court {
-  id: string | number;
-  name: string;
-  price: number;
-}
+export default function BookingPage() {
+  const [selectedDate, setSelectedDate] = useState('2026-08-03');
+  const [duration, setDuration] = useState<number>(90); // Default: 90 mins (ساعة ونصف)
+  const [startTime, setStartTime] = useState<string>('08:00');
+  const [selectedExtras, setSelectedExtras] = useState<{ [key: string]: boolean }>({
+    ball: false,
+    gloves: false,
+    vests: false,
+  });
 
-interface Booking {
-  id?: string;
-  court_id: string;
-  court_name: string;
-  customer_name: string;
-  customer_phone: string;
-  date: string;
-  start_slot: string;
-  duration_minutes: number;
-  reserved_slots: string[];
-  total_price: number;
-  extras?: string[];
-}
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportText, setReportText] = useState('');
 
-// الملاعب المتاحة
-const COURTS: Court[] = [
-  { id: '1', name: 'ملعب العيون', price: 200 },
-  { id: '2', name: 'ملعب الشاغور', price: 200 },
-  { id: '3', name: 'ملعب البانياس', price: 200 },
-];
+  // قائمة الأوقات المتاحة
+  const timeSlots = [
+    '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
+    '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
+    '14:00', '14:30', '15:00', '15:30', '16:00', '16:30',
+    '17:00', '17:30', '18:00', '18:30', '19:00', '19:30',
+    '20:00', '20:30', '21:00', '21:30', '22:00', '22:30'
+  ];
 
-// توليد الساعات من 08:00 حتى 23:00 (كل خانة 30 دقيقة)
-const generateTimeSlots = () => {
-  const slots = [];
-  for (let hour = 8; hour <= 22; hour++) {
-    const h = hour < 10 ? `0${hour}` : `${hour}`;
-    slots.push(`${h}:00`);
-    slots.push(`${h}:30`);
-  }
-  return slots;
-};
-
-const TIME_SLOTS = generateTimeSlots();
-
-export default function Home() {
-  // 2. الحالات (States)
-  const [selectedCourt, setSelectedCourt] = useState<Court>(COURTS[0]);
-  const [bookingDate, setBookingDate] = useState<string>('2026-07-30');
-  const [startSlot, setStartSlot] = useState<string>('08:00');
-  const [durationMinutes, setDurationMinutes] = useState<number>(90); // 90 دقيقة كحد افتراضي
-  const [customerName, setCustomerName] = useState<string>('');
-  const [customerPhone, setCustomerPhone] = useState<string>('');
-  
-  // الإضافات
-  const [addBall, setAddBall] = useState<boolean>(false);
-  const [addGloves, setAddGloves] = useState<boolean>(false);
-  const [addVests, setAddVests] = useState<boolean>(false);
-
-  // قائمة الحجوزات القادمة من Supabase
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [bookingSuccess, setBookingSuccess] = useState<boolean>(false);
-
-  // 3. دالة جلب الحجوزات من Supabase
-  const fetchBookings = async () => {
-    try {
-      const { data, error } = await supabase.from('bookings').select('*');
-      if (error) {
-        console.error('خطأ أثناء جلب الحجوزات:', error);
-      } else if (data) {
-        setBookings(data as Booking[]);
-      }
-    } catch (err) {
-      console.error('خطأ غير متوقع عند الجلب:', err);
+  // حساب أسعار المدة
+  const getBasePrice = (dur: number) => {
+    switch (dur) {
+      case 60: return 150;
+      case 90: return 200;
+      case 120: return 250;
+      default: return 200;
     }
   };
 
-  // 4. التزامن اللحظي (Realtime Subscription)
-  useEffect(() => {
-    fetchBookings();
-
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'bookings' },
-        () => {
-          fetchBookings();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  // حساب النطاق المختار من الساعات (مثلاً 90 دقيقة = 3 خانات 30 دقيقة)
-  const getSelectedRange = () => {
-    const startIndex = TIME_SLOTS.indexOf(startSlot);
-    if (startIndex === -1) return [];
-    const slotsCount = Math.ceil(durationMinutes / 30);
-    return TIME_SLOTS.slice(startIndex, startIndex + slotsCount);
+  // أسعار الإضافات
+  const extrasPrices = {
+    ball: 20,
+    gloves: 15,
+    vests: 15,
   };
-
-  const selectedRange = getSelectedRange();
-
-  // 5. فحص هل الساعة محجوزة مسبقاً؟
-  const isSlotBooked = (slotTime: string) => {
-    return bookings.some((b) => {
-      const isSameCourt = String(b.court_id) === String(selectedCourt.id);
-      const isSameDate = b.date === bookingDate;
-      const isSlotTaken = b.reserved_slots?.includes(slotTime);
-      return isSameCourt && isSameDate && isSlotTaken;
-    });
-  };
-
-  // فحص التعارض للكرة الحالية المُختارة
-  const hasConflict = selectedRange.some((slot) => isSlotBooked(slot));
 
   // حساب السعر الإجمالي
-  const totalPrice = selectedCourt.price + (addBall ? 20 : 0) + (addGloves ? 15 : 0) + (addVests ? 15 : 0);
+  const calculateTotal = () => {
+    let total = getBasePrice(duration);
+    if (selectedExtras.ball) total += extrasPrices.ball;
+    if (selectedExtras.gloves) total += extrasPrices.gloves;
+    if (selectedExtras.vests) total += extrasPrices.vests;
+    return total;
+  };
 
-  // 6. دالة تأكيد الحجز بالإرسال إلى Supabase
-  const handleConfirmBooking = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // حساب وقت الانتهاء تلقائياً لتقديمه بشكل (من - إلى)
+  const formatTimeSlot = (start: string, durMinutes: number) => {
+    const [hours, minutes] = start.split(':').map(Number);
+    const date = new Date();
+    date.setHours(hours, minutes, 0);
+    date.setMinutes(date.getMinutes() + durMinutes);
+    
+    const endHours = String(date.getHours()).padStart(2, '0');
+    const endMinutes = String(date.getMinutes()).padStart(2, '0');
+    
+    return `${start} - ${endHours}:${endMinutes}`;
+  };
 
-    if (!customerName.trim() || !customerPhone.trim()) {
-      alert('يرجى كتابة الاسم ورقم الهاتف بشكل صحيح!');
-      return;
-    }
-
-    if (hasConflict) {
-      alert('عذراً، بعض الساعات في هذا التوقيت محجوزة بالفعل! اختر وقتاً آخر.');
-      return;
-    }
-
-    const extrasArray: string[] = [];
-    if (addBall) extrasArray.push('طابة');
-    if (addGloves) extrasArray.push('كفوف حارس');
-    if (addVests) extrasArray.push('شيالات');
-
-    const newBooking = {
-      court_id: String(selectedCourt.id),
-      court_name: selectedCourt.name,
-      customer_name: customerName,
-      customer_phone: customerPhone,
-      date: bookingDate,
-      start_slot: startSlot,
-      duration_minutes: durationMinutes,
-      reserved_slots: selectedRange,
-      total_price: totalPrice,
-      extras: extrasArray,
-    };
-
-    try {
-      const { data, error } = await supabase
-        .from('bookings')
-        .insert([newBooking])
-        .select();
-
-      if (error) {
-        console.error('خطأ Supabase:', error);
-        alert(`حدث خطأ أثناء حفظ الحجز: ${error.message}`);
-      } else {
-        console.log('تم الحفظ بنجاح:', data);
-        setBookingSuccess(true);
-        fetchBookings();
-        // إعادة تعيين المدخلات
-        setCustomerName('');
-        setCustomerPhone('');
-        setTimeout(() => setBookingSuccess(false), 4000);
-      }
-    } catch (err) {
-      console.error('خطأ في الإرسال:', err);
-      alert('تعذر الاتصال بقاعدة البيانات!');
-    }
+  const handleExtraToggle = (key: string) => {
+    setSelectedExtras(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 dir-rtl p-4 md:p-8 font-sans text-right">
-      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100 p-6">
-        <h1 className="text-3xl font-bold text-center text-green-700 mb-6">
-          حجز ملاعب أم الفحم ⚽
-        </h1>
+    <div dir="rtl" className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-24">
+      {/* Header / Hero Section */}
+      <header className="relative bg-gradient-to-b from-emerald-900 to-slate-900 pt-10 pb-16 px-4 text-center border-b border-emerald-500/20">
+        <div className="max-w-3xl mx-auto">
+          <span className="inline-flex items-center gap-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-full text-xs font-bold mb-4">
+            <Sparkles className="w-3.5 h-3.5" /> نظام الحجز الإلكتروني السريع
+          </span>
+          <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight mb-2">
+            ملعب العيون <span className="text-emerald-400">العشبي</span>
+          </h1>
+          <p className="text-slate-300 text-sm sm:text-base font-medium">
+            اختر وقتك المناسب واحجز الملعب بخطوات بسيطة
+          </p>
+        </div>
+      </header>
 
-        {/* اختيار الملعب */}
-        <div className="mb-6">
-          <label className="block text-gray-700 font-bold mb-2">اختر الملعب:</label>
-          <div className="grid grid-cols-3 gap-3">
-            {COURTS.map((court) => (
-              <button
-                key={court.id}
-                type="button"
-                onClick={() => setSelectedCourt(court)}
-                className={`p-3 rounded-xl border transition-all font-semibold ${
-                  selectedCourt.id === court.id
-                    ? 'bg-green-600 text-white border-green-600 shadow-md'
-                    : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                }`}
+      {/* Main Container */}
+      <main className="max-w-4xl mx-auto px-4 -mt-8">
+        <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 border border-slate-200 text-slate-900 space-y-8">
+          
+          {/* Section 1: Date & Duration */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* تاريخ الحجز */}
+            <div>
+              <label className="block text-slate-900 font-bold text-sm mb-2 flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-emerald-600" /> تاريخ الحجز:
+              </label>
+              <input 
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-bold rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all cursor-pointer"
+              />
+            </div>
+
+            {/* مدة الحجز */}
+            <div>
+              <label className="block text-slate-900 font-bold text-sm mb-2 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-emerald-600" /> مدة الحجز والعرُض:
+              </label>
+              <select 
+                value={duration}
+                onChange={(e) => setDuration(Number(e.target.value))}
+                className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-bold rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all cursor-pointer"
               >
-                {court.name}
-              </button>
-            ))}
+                <option value={60}>60 دقيقة (ساعة) - 150 ₪</option>
+                <option value={90}>90 دقيقة (ساعة ونصف) - 200 ₪</option>
+                <option value={120}>120 دقيقة (ساعتين) - 250 ₪</option>
+              </select>
+            </div>
           </div>
-        </div>
 
-        {/* تحديد التاريخ والمدة */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <hr className="border-slate-200" />
+
+          {/* Section 2: Choose Start Time */}
           <div>
-            <label className="block text-gray-700 font-bold mb-2">تاريخ الحجز:</label>
-            <input
-              type="date"
-              value={bookingDate}
-              onChange={(e) => setBookingDate(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500"
-            />
+            <div className="flex items-center justify-between mb-3">
+              <label className="text-slate-900 font-bold text-base flex items-center gap-2">
+                <Clock className="w-5 h-5 text-emerald-600" /> اختر الوقت المناسب (من - إلى):
+              </label>
+              <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md">
+                المدة الحالية: {duration} دقيقة
+              </span>
+            </div>
+
+            {/* Grid of Time Slots */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-80 overflow-y-auto p-1 scrollbar-thin">
+              {timeSlots.map((time) => {
+                const formattedRange = formatTimeSlot(time, duration);
+                const isSelected = startTime === time;
+
+                return (
+                  <button
+                    key={time}
+                    type="button"
+                    onClick={() => setStartTime(time)}
+                    className={`p-3 rounded-xl text-xs sm:text-sm font-bold border transition-all duration-150 text-center flex flex-col items-center justify-center gap-1 ${
+                      isSelected 
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/30 scale-[1.02]' 
+                        : 'bg-slate-50 text-slate-800 border-slate-300 hover:border-emerald-500 hover:bg-emerald-50'
+                    }`}
+                  >
+                    <span>{formattedRange}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
+
+          <hr className="border-slate-200" />
+
+          {/* Section 3: Equipment */}
           <div>
-            <label className="block text-gray-700 font-bold mb-2">مدة الحجز:</label>
-            <select
-              value={durationMinutes}
-              onChange={(e) => setDurationMinutes(Number(e.target.value))}
-              className="w-full p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500"
-            >
-              <option value={90}>90 دقيقة (ساعة ونصف - 200 ₪)</option>
-              <option value={60}>60 دقيقة (ساعة)</option>
-              <option value={120}>120 دقيقة (ساعتان)</option>
-            </select>
-          </div>
-        </div>
-
-        {/* شبكة اختيار الساعات */}
-        <div className="mb-6">
-          <label className="block text-gray-700 font-bold mb-2">اختر ساعة البداية:</label>
-          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-60 overflow-y-auto p-2 border rounded-xl">
-            {TIME_SLOTS.map((slot) => {
-              const booked = isSlotBooked(slot);
-              const isSelected = selectedRange.includes(slot);
-
-              return (
-                <button
-                  key={slot}
-                  type="button"
-                  disabled={booked}
-                  onClick={() => setStartSlot(slot)}
-                  className={`p-2 rounded-lg text-sm font-medium border transition-all ${
-                    booked
-                      ? 'bg-red-500 text-white cursor-not-allowed opacity-70 border-red-500'
-                      : isSelected
-                      ? 'bg-green-600 text-white border-green-600 shadow'
-                      : 'bg-white text-gray-700 border-gray-200 hover:bg-green-50'
-                  }`}
-                >
-                  {slot} {booked ? '(محجوز)' : ''}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* خيارات إضافية */}
-        <div className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
-          <label className="block text-gray-700 font-bold mb-2">معدات إضافية:</label>
-          <div className="flex flex-wrap gap-4">
-            <label className="flex items-center space-x-2 space-x-reverse cursor-pointer">
-              <input
-                type="checkbox"
-                checked={addBall}
-                onChange={(e) => setAddBall(e.target.checked)}
-                className="w-4 h-4 text-green-600 rounded"
-              />
-              <span>طابة (+20 ₪)</span>
+            <label className="block text-slate-900 font-bold text-base mb-3 flex items-center gap-2">
+              <Shirt className="w-5 h-5 text-emerald-600" /> معدات وتجهيزات إضافية:
             </label>
-            <label className="flex items-center space-x-2 space-x-reverse cursor-pointer">
-              <input
-                type="checkbox"
-                checked={addGloves}
-                onChange={(e) => setAddGloves(e.target.checked)}
-                className="w-4 h-4 text-green-600 rounded"
-              />
-              <span>كفوف حارس (+15 ₪)</span>
-            </label>
-            <label className="flex items-center space-x-2 space-x-reverse cursor-pointer">
-              <input
-                type="checkbox"
-                checked={addVests}
-                onChange={(e) => setAddVests(e.target.checked)}
-                className="w-4 h-4 text-green-600 rounded"
-              />
-              <span>شيالات (+15 ₪)</span>
-            </label>
-          </div>
-        </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              
+              {/* طابة */}
+              <label className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer transition-all ${
+                selectedExtras.ball ? 'border-emerald-600 bg-emerald-50/50' : 'border-slate-300 bg-slate-50'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    checked={selectedExtras.ball} 
+                    onChange={() => handleExtraToggle('ball')}
+                    className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500" 
+                  />
+                  <span className="font-bold text-slate-900 text-sm">كرة طابة إضافية</span>
+                </div>
+                <span className="text-xs font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">+20 ₪</span>
+              </label>
 
-        {/* نموذج بيانات الزبون والتأكيد */}
-        <form onSubmit={handleConfirmBooking} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* كفوف حارس */}
+              <label className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer transition-all ${
+                selectedExtras.gloves ? 'border-emerald-600 bg-emerald-50/50' : 'border-slate-300 bg-slate-50'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    checked={selectedExtras.gloves} 
+                    onChange={() => handleExtraToggle('gloves')}
+                    className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500" 
+                  />
+                  <span className="font-bold text-slate-900 text-sm">كفوف حارس</span>
+                </div>
+                <span className="text-xs font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">+15 ₪</span>
+              </label>
+
+              {/* شيالات / زي توجيه */}
+              <label className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer transition-all ${
+                selectedExtras.vests ? 'border-emerald-600 bg-emerald-50/50' : 'border-slate-300 bg-slate-50'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    checked={selectedExtras.vests} 
+                    onChange={() => handleExtraToggle('vests')}
+                    className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500" 
+                  />
+                  <span className="font-bold text-slate-900 text-sm">شيالات / شواخص</span>
+                </div>
+                <span className="text-xs font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">+15 ₪</span>
+              </label>
+
+            </div>
+          </div>
+
+          <hr className="border-slate-200" />
+
+          {/* Section 4: Personal Info */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-gray-700 font-bold mb-1">الاسم الكامل:</label>
-              <input
-                type="text"
-                required
-                placeholder="أدخل اسمك"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                className="w-full p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500"
+              <label className="block text-slate-900 font-bold text-sm mb-1.5 flex items-center gap-1.5">
+                <User className="w-4 h-4 text-emerald-600" /> الاسم الكامل:
+              </label>
+              <input 
+                type="text" 
+                placeholder="أدخل اسمك الكريم"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-bold rounded-xl px-4 py-3 placeholder:text-slate-400 placeholder:font-normal focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>
+
             <div>
-              <label className="block text-gray-700 font-bold mb-1">رقم الهاتف:</label>
-              <input
-                type="tel"
-                required
+              <label className="block text-slate-900 font-bold text-sm mb-1.5 flex items-center gap-1.5">
+                <Phone className="w-4 h-4 text-emerald-600" /> رقم الهاتف:
+              </label>
+              <input 
+                type="tel" 
                 placeholder="05X-XXXXXXX"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                className="w-full p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-bold rounded-xl px-4 py-3 placeholder:text-slate-400 placeholder:font-normal focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+          {/* Sticky Total Summary & Submit */}
+          <div className="bg-slate-900 text-white rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 border border-slate-800 shadow-xl">
             <div>
-              <span className="text-gray-600 block text-sm">السعر الإجمالي:</span>
-              <span className="text-2xl font-bold text-green-700">{totalPrice} ₪</span>
+              <span className="text-slate-400 text-xs font-bold block mb-0.5">تفاصيل المبلغ المطلوب:</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-black text-emerald-400">{calculateTotal()} ₪</span>
+                <span className="text-xs text-slate-300">({duration} دقيقة + الإضافات)</span>
+              </div>
+              <span className="text-xs text-slate-400 block mt-1">
+                الوقت المحدد: <strong className="text-white">{formatTimeSlot(startTime, duration)}</strong>
+              </span>
             </div>
 
-            <button
-              type="submit"
-              disabled={hasConflict}
-              className={`px-8 py-3 rounded-xl text-white font-bold transition-all shadow-lg ${
-                hasConflict
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-green-600 hover:bg-green-700 active:scale-95'
-              }`}
+            <button 
+              type="button"
+              className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-base px-8 py-3.5 rounded-xl transition-all shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
             >
-              {hasConflict ? 'التوقيت محجوز' : 'تأكيد الحجز'}
+              <CheckCircle2 className="w-5 h-5" /> تأكيد وإرسال الحجز
             </button>
           </div>
-        </form>
 
-        {bookingSuccess && (
-          <div className="mt-4 p-4 bg-green-100 border border-green-400 text-green-700 text-center rounded-xl font-bold">
-            🎉 تم حفظ الحجز بنجاح وتحديث الجدول فوراً!
+        </div>
+
+        {/* Footer Quick Action Tools */}
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-4 text-slate-400 text-xs px-2">
+          <button 
+            onClick={() => setShowReportModal(true)}
+            className="flex items-center gap-1.5 text-rose-400 hover:text-rose-300 font-bold transition-colors cursor-pointer bg-rose-500/10 border border-rose-500/20 px-3 py-2 rounded-lg"
+          >
+            <ShieldAlert className="w-4 h-4" /> الإبلاغ عن مشكلة أو كسر بالملعب
+          </button>
+
+          <span>© جميع الحقوق محفوظة - ملعب العيون</span>
+        </div>
+      </main>
+
+      {/* Floating WhatsApp Quick Contact */}
+      <a 
+        href="https://wa.me/9720500000000" // ضع رقم الواتساب الخاص بالملعب هنا
+        target="_blank" 
+        rel="noopener noreferrer"
+        className="fixed bottom-6 left-6 bg-emerald-500 hover:bg-emerald-400 text-slate-950 p-3.5 rounded-full shadow-2xl shadow-emerald-500/50 flex items-center gap-2 font-bold text-sm z-50 transition-all hover:scale-110"
+      >
+        <MessageCircle className="w-6 h-6 fill-slate-950" />
+        <span className="hidden sm:inline">استفسار سريع</span>
+      </a>
+
+      {/* Report Issue Modal */}
+      {showReportModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white text-slate-900 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-2 text-rose-600 font-bold text-lg">
+              <AlertTriangle className="w-6 h-6" /> الإبلاغ عن مشكلة بالملعب
+            </div>
+            <p className="text-slate-600 text-xs leading-relaxed">
+              تصل هذه الرسالة لإدارة الملعب فوراً، يمكنك الإبلاغ عن إضاءة تعطلت، أو معدات مفقودة، أو أي ملاحظة.
+            </p>
+            <textarea 
+              rows={4}
+              value={reportText}
+              onChange={(e) => setReportText(e.target.value)}
+              placeholder="اكتب تفاصيل المشكلة هنا..."
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-sm text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-rose-500"
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button 
+                onClick={() => setShowReportModal(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg"
+              >
+                إلغاء
+              </button>
+              <button 
+                onClick={() => {
+                  alert('تم إرسال بلاغك للإدارة بنجاح. شكراً لاهتمامك!');
+                  setShowReportModal(false);
+                  setReportText('');
+                }}
+                className="px-5 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-lg shadow-md shadow-rose-600/30"
+              >
+                إرسال البلاغ
+              </button>
+            </div>
           </div>
-        )}
-      </div>
-    </main>
+        </div>
+      )}
+
+    </div>
   );
 }
