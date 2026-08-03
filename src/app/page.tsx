@@ -30,7 +30,6 @@ export default function BookingPage() {
   const [selectedStadium, setSelectedStadium] = useState<string>('eloyoun');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   
-  // المدة مثبتة على 90 دقيقة (ساعة ونصف)
   const duration = 90; 
   const [startTime, setStartTime] = useState<string>('18:00');
   const [activePeriod, setActivePeriod] = useState<'morning' | 'afternoon' | 'night'>('night');
@@ -58,7 +57,6 @@ export default function BookingPage() {
     { id: 'banyas', name: 'ملعب البانياس' },
   ];
 
-  // الأوقات المتاحة لبداية الحجز (تبدأ من 08:00 وتنتهي آخر وجبة حجز الساعة 21:30 لتنتهي 23:00)
   const baseStartSlots = {
     morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30'],
     afternoon: ['16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30'],
@@ -302,7 +300,7 @@ export default function BookingPage() {
 
   return (
     <div dir="rtl" className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-24">
-      <header className="relative bg-gradient-to-b from-emerald-900 to-slate-900 pt-10 pb-16 px-4 text-center border-b border-emerald-500/20">
+      <header className="relative bg-gradient-to-b from-emerald-900 to-slate-900 pt-10 pb-12 px-4 text-center border-b border-emerald-500/20">
         <div className="max-w-3xl mx-auto">
           <span className="inline-flex items-center gap-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-full text-xs font-bold mb-4">
             <Sparkles className="w-3.5 h-3.5" /> حجز ملاعب أم الفحم أونلاين
@@ -313,8 +311,9 @@ export default function BookingPage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 -mt-8">
-        <form onSubmit={handleBookingSubmit} className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 border border-slate-200 text-slate-900 space-y-8">
+      {/* تم تغيير -mt-8 إلى mt-6 لإبعاد بطاقة الحجز عن أعلى الصفحة */}
+      <main className="max-w-4xl mx-auto px-4 mt-6">
+        <form onSubmit={handleBookingSubmit} className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 pt-8 border border-slate-200 text-slate-900 space-y-8">
           
           {/* اختيار الملعب */}
           <div>
@@ -355,7 +354,6 @@ export default function BookingPage() {
               />
             </div>
 
-            {/* مدة المباراة */}
             <div>
               <label className="block text-slate-900 font-bold text-sm mb-2 flex items-center gap-2">
                 <Clock className="w-4 h-4 text-emerald-600" /> مدة المباراة:
@@ -390,7 +388,6 @@ export default function BookingPage() {
               {isLoadingBookings && <span className="text-xs text-emerald-600 font-bold animate-pulse">جاري المزامنة...</span>}
             </div>
 
-            {/* أزرار التنقل بين الفترات (صباحي / عصريات / ليلي) */}
             <div className="grid grid-cols-3 gap-2 mb-4">
               <button
                 type="button"
