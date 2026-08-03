@@ -74,7 +74,7 @@ export default function BookingPage() {
     }
   };
 
-  // جلب الحجوزات السابقة
+  // جلب الحجوزات السابقة لمنع التداخل
   useEffect(() => {
     async function fetchBookings() {
       setIsLoadingBookings(true);
@@ -99,11 +99,12 @@ export default function BookingPage() {
   }, [selectedStadium, selectedDate]);
 
   const timeToMinutes = (timeStr: string) => {
+    if (!timeStr) return 0;
     const [h, m] = timeStr.split(':').map(Number);
     return h * 60 + m;
   };
 
-  // حساب الحزم المشتملة عليها فترة الحجز
+  // حساب الأوقات الفرعية المحجوزة
   const getSlotSlotsRange = (startStr: string, durMinutes: number) => {
     const startMins = timeToMinutes(startStr);
     const endMins = startMins + durMinutes;
@@ -117,14 +118,14 @@ export default function BookingPage() {
     return slots;
   };
 
-  // فحص تداخل الأوقات
+  // فحص تداخل الحجوزات مع المخطط الجديد
   const isTimeSlotOverlap = (slotStartStr: string, slotDurationMinutes: number) => {
     const newStart = timeToMinutes(slotStartStr);
     const newEnd = newStart + slotDurationMinutes;
 
     return existingBookings.some((b) => {
-      const existingStart = timeToMinutes(b.start_slot || b.start_time || '00:00');
-      const existingDuration = b.duration_minutes || 90;
+      const existingStart = timeToMinutes(b.start_time || b.start_slot || '00:00');
+      const existingDuration = Number(b.duration_minutes || b.time_range || 90);
       const existingEnd = existingStart + existingDuration;
 
       return newStart < existingEnd && newEnd > existingStart;
@@ -162,7 +163,7 @@ export default function BookingPage() {
     return `${start} - ${endHours}:${endMinutes}`;
   };
 
-  // معالجة الحجز
+  // إرسال الحجز مع تطابق كامل لقاعدة البيانات
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -179,20 +180,22 @@ export default function BookingPage() {
     setIsSubmitting(true);
 
     const stadiumObj = stadiums.find(s => s.id === selectedStadium);
-    const formattedTime = formatTimeSlot(startTime, duration);
+    const formattedTimeText = formatTimeSlot(startTime, duration);
     const totalPrice = calculateTotal();
     const reservedSlotsArr = getSlotSlotsRange(startTime, duration);
 
-    // الكائن مطابق 100% لأعمدة جدولك المستخرجة من الصور
+    // كائن الإدخال المطابق لقاعدة البيانات بالكامل
     const bookingPayload = {
       court_id: selectedStadium,
+      stadium_name: stadiumObj?.name,
       court_name: stadiumObj?.name,
       customer_name: fullName,
       customer_phone: phone,
       date: selectedDate,
-      start_slot: startTime,
-      duration_minutes: duration,
-      reserved_slots: reservedSlotsArr,
+      start_time: startTime,
+      duration_minutes: String(duration), // تحويل الرقم لنص text بحسب الـ SQL Schema
+      time_range: duration,              // الوقت الممتد كـ integer بحسب الـ SQL Schema
+      reserved_slots: reservedSlotsArr,   // array jsonb
       total_price: totalPrice,
       extras: selectedExtras,
     };
@@ -211,22 +214,21 @@ export default function BookingPage() {
         setBookingConfirmedData({
           ...bookingPayload,
           id: data?.id || 'UUID-CONFIRMED',
-          time_range: formattedTime
+          formatted_time: formattedTimeText
         });
       }
     } catch (err: any) {
       console.error('Submission catch error:', err);
-      alert('حدث خطأ بالاتصال بالسيرفر.');
+      alert('حدث خطأ أثناء الاتصال بالسيرفر.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // دالة تحويل رقم الهاتف وتوليد رابط الواتساب
+  // إرسال تذكير وإيصال عبر الواتساب
   const sendWhatsAppReminder = () => {
     if (!bookingConfirmedData) return;
 
-    // تنظيف رقم الهاتف وإضافة مقدمة الدولة (972+)
     let formattedPhone = bookingConfirmedData.customer_phone.replace(/[^0-9]/g, '');
     if (formattedPhone.startsWith('0')) {
       formattedPhone = '972' + formattedPhone.substring(1);
@@ -234,9 +236,9 @@ export default function BookingPage() {
 
     const message = `⚽ *تفاصيل وإيصال حجز الملعب*%0A%0A` +
       `👤 *الاسم:* ${bookingConfirmedData.customer_name}%0A` +
-      `📍 *الملعب:* ${bookingConfirmedData.court_name}%0A` +
+      `📍 *الملعب:* ${bookingConfirmedData.stadium_name}%0A` +
       `📅 *التاريخ:* ${bookingConfirmedData.date}%0A` +
-      `⏰ *الوقت:* ${bookingConfirmedData.time_range} (${bookingConfirmedData.duration_minutes} دقيقة)%0A` +
+      `⏰ *الوقت:* ${bookingConfirmedData.formatted_time} (${bookingConfirmedData.duration_minutes} دقيقة)%0A` +
       `💰 *المبلغ النهائي:* ${bookingConfirmedData.total_price} ₪%0A%0A` +
       `نتمنى لكم مباراة ممتعة! 🏆`;
 
@@ -252,9 +254,7 @@ export default function BookingPage() {
     setReportText('');
   };
 
-  // ----------------------------------------------------
-  // شاشة الفاتورة والتأكيد
-  // ----------------------------------------------------
+  // شاشة الإيصال والتأكيد النهائي
   if (bookingConfirmedData) {
     return (
       <div dir="rtl" className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4">
@@ -272,7 +272,7 @@ export default function BookingPage() {
           <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200 text-right space-y-3.5 text-sm">
             <div className="flex justify-between items-center border-b pb-2">
               <span className="text-slate-500 font-bold">الملعب:</span>
-              <span className="font-black text-emerald-700 text-base">{bookingConfirmedData.court_name}</span>
+              <span className="font-black text-emerald-700 text-base">{bookingConfirmedData.stadium_name}</span>
             </div>
 
             <div className="flex justify-between items-center border-b pb-2">
@@ -282,7 +282,7 @@ export default function BookingPage() {
 
             <div className="flex justify-between items-center border-b pb-2">
               <span className="text-slate-500 font-bold">الوقت المحدد:</span>
-              <span className="font-bold text-slate-900">{bookingConfirmedData.time_range} ({bookingConfirmedData.duration_minutes} دقيقة)</span>
+              <span className="font-bold text-slate-900">{bookingConfirmedData.formatted_time} ({bookingConfirmedData.duration_minutes} دقيقة)</span>
             </div>
 
             <div className="flex justify-between items-center border-b pb-2">
@@ -301,12 +301,11 @@ export default function BookingPage() {
             </div>
           </div>
 
-          {/* زر إرسال تذكير الواتساب للمستخدم */}
           <button 
             onClick={sendWhatsAppReminder}
             className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg transition-all"
           >
-            <MessageSquare className="w-5 h-5" /> إرسال إيصال وتذكير الحجز للواتساب
+            <MessageSquare className="w-5 h-5" /> إرسال إيصال وتذكير الحجز عبر الواتساب
           </button>
 
           <div className="flex gap-3">
@@ -561,7 +560,7 @@ export default function BookingPage() {
             </div>
           </div>
 
-          {/* الزر والملخص */}
+          {/* زر التأكيد والملخص السريع */}
           <div className="bg-slate-900 text-white rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 border border-slate-800 shadow-xl">
             <div>
               <span className="text-slate-400 text-xs font-bold block mb-0.5">المبلغ النهائي:</span>
@@ -598,7 +597,7 @@ export default function BookingPage() {
         </div>
       </main>
 
-      {/* مودال البلاغ */}
+      {/* مودال البلاغات */}
       {showReportModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white text-slate-900 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
