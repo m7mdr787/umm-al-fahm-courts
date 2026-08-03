@@ -119,7 +119,7 @@ export default function BookingPage() {
   };
 
   const basePrice = 200;
-  const extrasPrices = { ball: 20, gloves: 15, vests: 15 };
+  const extrasPrices = { ball: 20, gloves: 15, vests: 25 };
 
   const calculateTotal = () => {
     let total = basePrice;
@@ -477,7 +477,7 @@ export default function BookingPage() {
                     onChange={() => setSelectedExtras(p => ({ ...p, ball: !p.ball }))}
                     className="w-4 h-4 text-emerald-600 rounded" 
                   />
-                  <span className="font-bold text-slate-900 text-sm">كرة طابة (+20 ₪)</span>
+                  <span className="font-bold text-slate-900 text-sm">كرة  (+20 ₪)</span>
                 </div>
               </label>
 
@@ -505,7 +505,7 @@ export default function BookingPage() {
                     onChange={() => setSelectedExtras(p => ({ ...p, vests: !p.vests }))}
                     className="w-4 h-4 text-emerald-600 rounded" 
                   />
-                  <span className="font-bold text-slate-900 text-sm">شيالات (+15 ₪)</span>
+                  <span className="font-bold text-slate-900 text-sm">شيالات (+25 ₪)</span>
                 </div>
               </label>
             </div>
@@ -522,7 +522,7 @@ export default function BookingPage() {
               <input 
                 type="text" 
                 required
-                placeholder="أدخل اسمك الكريم"
+                placeholder="أدخل اسمك"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-bold rounded-xl px-4 py-3 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -577,7 +577,7 @@ export default function BookingPage() {
           >
             <ShieldAlert className="w-4 h-4" /> الإبلاغ عن مشكلة بالملعب
           </button>
-          <span>© إدارات ملاعب أم الفحم</span>
+          <span>© إدارة ملاعب أم الفحم</span>
         </div>
       </main>
 
