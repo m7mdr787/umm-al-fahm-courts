@@ -14,7 +14,6 @@ import {
   MapPin,
   Printer,
   RotateCcw,
-  Sun,
   Sunset,
   Moon,
   MessageSquare,
@@ -29,7 +28,9 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export default function BookingPage() {
   const [selectedStadium, setSelectedStadium] = useState<string>('eloyoun');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [duration, setDuration] = useState<number>(90); // 60, 90, 120
+  
+  // المدة مثبتة على 90 دقيقة (ساعة ونصف)
+  const duration = 90; 
   const [startTime, setStartTime] = useState<string>('18:00');
   const [activePeriod, setActivePeriod] = useState<'afternoon' | 'night'>('night');
   
@@ -56,10 +57,10 @@ export default function BookingPage() {
     { id: 'banyas', name: 'ملعب البانياس' },
   ];
 
-  // شبكة الأوقات المتاحة للبدء
+  // الأوقات المتاحة لبداية الحجز (بناءً على مدة 90 دقيقة، وآخر موعد ينتهي 23:00 هو البداية 21:30)
   const baseStartSlots = {
     afternoon: ['16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30'],
-    night: ['20:00', '20:30', '21:00', '21:30', '22:00'] // آخر وقت للبدء يُحسب بحسب المدة بحيث لا يتجاوز 23:00
+    night: ['20:00', '20:30', '21:00', '21:30'] // 21:30 تنتهي 23:00 تماماً (إغلاق الملعب)
   };
 
   useEffect(() => {
@@ -104,15 +105,7 @@ export default function BookingPage() {
     return slots;
   };
 
-  // فحص ما إذا كان الحجز يتجاوز الساعة 11 ليلاً (23:00)
-  const exceedsClosingTime = (startStr: string, durMinutes: number) => {
-    const startMins = timeToMinutes(startStr);
-    const endMins = startMins + durMinutes;
-    const closingMins = 23 * 60; // 23:00 = 1380 دقيقة
-    return endMins > closingMins;
-  };
-
-  // فحص التداخل مع حجوزات سابقة
+  // فحص التداخل مع الحجوزات السابقة
   const isTimeSlotOverlap = (slotStartStr: string, slotDurationMinutes: number) => {
     const newStart = timeToMinutes(slotStartStr);
     const newEnd = newStart + slotDurationMinutes;
@@ -126,19 +119,11 @@ export default function BookingPage() {
     });
   };
 
-  const getBasePrice = (dur: number) => {
-    switch (dur) {
-      case 60: return 150;
-      case 90: return 200;
-      case 120: return 250;
-      default: return 200;
-    }
-  };
-
+  const basePrice = 200; // سعر الـ 90 دقيقة ثابت
   const extrasPrices = { ball: 20, gloves: 15, vests: 15 };
 
   const calculateTotal = () => {
-    let total = getBasePrice(duration);
+    let total = basePrice;
     if (selectedExtras.ball) total += extrasPrices.ball;
     if (selectedExtras.gloves) total += extrasPrices.gloves;
     if (selectedExtras.vests) total += extrasPrices.vests;
@@ -162,11 +147,6 @@ export default function BookingPage() {
 
     if (!fullName.trim() || !phone.trim()) {
       alert('الرجاء إدخال الاسم الكامل ورقم الهاتف');
-      return;
-    }
-
-    if (exceedsClosingTime(startTime, duration)) {
-      alert('عذراً! الملاعب تغلق الساعة 11:00 ليلاً، يرجى اختيار موعد ينتهي قبل الإغلاق.');
       return;
     }
 
@@ -234,7 +214,7 @@ export default function BookingPage() {
       `👤 *الاسم:* ${bookingConfirmedData.customer_name}%0A` +
       `📍 *الملعب:* ${bookingConfirmedData.stadium_name}%0A` +
       `📅 *التاريخ:* ${bookingConfirmedData.date}%0A` +
-      `⏰ *الوقت:* ${bookingConfirmedData.formatted_time} (${bookingConfirmedData.duration_minutes} دقيقة)%0A` +
+      `⏰ *الوقت:* ${bookingConfirmedData.formatted_time} (ساعة ونصف)%0A` +
       `💰 *المبلغ النهائي:* ${bookingConfirmedData.total_price} ₪%0A%0A` +
       `نتمنى لكم مباراة ممتعة! 🏆`;
 
@@ -274,7 +254,7 @@ export default function BookingPage() {
             </div>
             <div className="flex justify-between items-center border-b pb-2">
               <span className="text-slate-500 font-bold">الوقت المحدد:</span>
-              <span className="font-bold text-slate-900">{bookingConfirmedData.formatted_time} ({bookingConfirmedData.duration_minutes} دقيقة)</span>
+              <span className="font-bold text-slate-900">{bookingConfirmedData.formatted_time} (ساعة ونصف)</span>
             </div>
             <div className="flex justify-between items-center border-b pb-2">
               <span className="text-slate-500 font-bold">اسم الحاجز:</span>
@@ -360,7 +340,7 @@ export default function BookingPage() {
 
           <hr className="border-slate-200" />
 
-          {/* التاريخ والمدة برؤية حديثة */}
+          {/* التاريخ والمدة */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-slate-900 font-bold text-sm mb-2 flex items-center gap-2">
@@ -374,44 +354,36 @@ export default function BookingPage() {
               />
             </div>
 
-            {/* اختيار المدة بكل وضوح */}
+            {/* خيارات مدة المباراة */}
             <div>
               <label className="block text-slate-900 font-bold text-sm mb-2 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-emerald-600" /> اختر مدة المباراة:
+                <Clock className="w-4 h-4 text-emerald-600" /> مدة المباراة:
               </label>
               <div className="grid grid-cols-3 gap-2">
-                {[
-                  { dur: 60, label: 'ساعة', price: '150 ₪' },
-                  { dur: 90, label: 'ساعة ونصف', price: '200 ₪' },
-                  { dur: 120, label: 'ساعتين', price: '250 ₪' },
-                ].map((item) => (
-                  <button
-                    key={item.dur}
-                    type="button"
-                    onClick={() => {
-                      setDuration(item.dur);
-                      // إذا كانت الساعة المختارة تتعدى الإغلاق مع المدة الجديدة، نعيد تعيينها لأول وقت متاح
-                      if (exceedsClosingTime(startTime, item.dur)) {
-                        setStartTime('18:00');
-                      }
-                    }}
-                    className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer font-bold ${
-                      duration === item.dur
-                        ? 'border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm ring-2 ring-emerald-500'
-                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div className="text-xs">{item.label}</div>
-                    <div className="text-xs font-black text-emerald-600 mt-0.5">{item.price}</div>
-                  </button>
-                ))}
+                {/* خيار معطل */}
+                <div className="p-2 rounded-xl border border-slate-200 bg-slate-100/60 text-center opacity-60 cursor-not-allowed">
+                  <div className="text-xs font-bold text-slate-500">ساعة</div>
+                  <div className="text-[10px] font-bold text-amber-600 mt-1">سيتوفر قريباً</div>
+                </div>
+
+                {/* الخيار النشط الوحيد: ساعة ونصف */}
+                <div className="p-2 rounded-xl border-2 border-emerald-600 bg-emerald-50 text-center shadow-sm">
+                  <div className="text-xs font-black text-emerald-900">ساعة ونصف</div>
+                  <div className="text-xs font-black text-emerald-600 mt-0.5">200 ₪</div>
+                </div>
+
+                {/* خيار معطل */}
+                <div className="p-2 rounded-xl border border-slate-200 bg-slate-100/60 text-center opacity-60 cursor-not-allowed">
+                  <div className="text-xs font-bold text-slate-500">ساعتين</div>
+                  <div className="text-[10px] font-bold text-amber-600 mt-1">سيتوفر قريباً</div>
+                </div>
               </div>
             </div>
           </div>
 
           <hr className="border-slate-200" />
 
-          {/* اختيار المواعيد السلس مع قفل الـ 11:00 ليلاً */}
+          {/* اختيار المواعيد */}
           <div>
             <div className="flex justify-between items-center mb-3">
               <label className="text-slate-900 font-bold text-base block">
@@ -446,23 +418,20 @@ export default function BookingPage() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200">
               {baseStartSlots[activePeriod].map((time) => {
                 const formattedRange = formatTimeSlot(time, duration);
                 const isSelected = startTime === time;
                 const isBooked = isTimeSlotOverlap(time, duration);
-                const isClosed = exceedsClosingTime(time, duration); // فحص قفل الـ 11 ليلاً
-
-                const isDisabled = isBooked || isClosed;
 
                 return (
                   <button
                     key={time}
                     type="button"
-                    disabled={isDisabled}
+                    disabled={isBooked}
                     onClick={() => setStartTime(time)}
                     className={`p-3.5 rounded-xl text-xs sm:text-sm font-black border transition-all text-center flex items-center justify-between ${
-                      isDisabled
+                      isBooked
                         ? 'bg-rose-50/50 text-rose-300 border-rose-100 cursor-not-allowed opacity-60'
                         : isSelected 
                           ? 'bg-emerald-600 text-white border-emerald-600 shadow-md scale-[1.02] cursor-pointer' 
@@ -470,9 +439,7 @@ export default function BookingPage() {
                     }`}
                   >
                     <span>{formattedRange}</span>
-                    {isClosed ? (
-                      <span className="text-[10px] text-rose-500 font-bold bg-rose-100 px-1.5 py-0.5 rounded">يتجاوز 11:00</span>
-                    ) : isBooked ? (
+                    {isBooked ? (
                       <span className="text-[10px] text-rose-500 font-bold flex items-center gap-0.5"><Ban className="w-3 h-3" /> محجوز</span>
                     ) : (
                       <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${isSelected ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-600'}`}>متاح</span>
@@ -481,7 +448,7 @@ export default function BookingPage() {
                 );
               })}
             </div>
-            <p className="text-[11px] text-slate-400 mt-2 text-left font-bold">* الملاعب تفتح حتى الساعة 11:00 ليلاً كأقصى حد.</p>
+            <p className="text-[11px] text-slate-400 mt-2 text-left font-bold">* الملاعب تغلق تماماً الساعة 11:00 ليلاً.</p>
           </div>
 
           <hr className="border-slate-200" />
@@ -569,7 +536,7 @@ export default function BookingPage() {
             </div>
           </div>
 
-          {/* زر التأكيد والملخص السريع */}
+          {/* زر التأكيد والملخص */}
           <div className="bg-slate-900 text-white rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 border border-slate-800 shadow-xl">
             <div>
               <span className="text-slate-400 text-xs font-bold block mb-0.5">المبلغ النهائي:</span>
@@ -584,7 +551,7 @@ export default function BookingPage() {
 
             <button 
               type="submit"
-              disabled={isSubmitting || isTimeSlotOverlap(startTime, duration) || exceedsClosingTime(startTime, duration)}
+              disabled={isSubmitting || isTimeSlotOverlap(startTime, duration)}
               className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-base px-8 py-3.5 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <CheckCircle2 className="w-5 h-5" /> 
