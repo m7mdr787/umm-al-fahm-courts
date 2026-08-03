@@ -14,6 +14,7 @@ import {
   MapPin,
   Printer,
   RotateCcw,
+  Sun,
   Sunset,
   Moon,
   MessageSquare,
@@ -32,7 +33,7 @@ export default function BookingPage() {
   // المدة مثبتة على 90 دقيقة (ساعة ونصف)
   const duration = 90; 
   const [startTime, setStartTime] = useState<string>('18:00');
-  const [activePeriod, setActivePeriod] = useState<'afternoon' | 'night'>('night');
+  const [activePeriod, setActivePeriod] = useState<'morning' | 'afternoon' | 'night'>('night');
   
   const [selectedExtras, setSelectedExtras] = useState<{ [key: string]: boolean }>({
     ball: false,
@@ -57,10 +58,11 @@ export default function BookingPage() {
     { id: 'banyas', name: 'ملعب البانياس' },
   ];
 
-  // الأوقات المتاحة لبداية الحجز (بناءً على مدة 90 دقيقة، وآخر موعد ينتهي 23:00 هو البداية 21:30)
+  // الأوقات المتاحة لبداية الحجز (تبدأ من 08:00 وتنتهي آخر وجبة حجز الساعة 21:30 لتنتهي 23:00)
   const baseStartSlots = {
+    morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30'],
     afternoon: ['16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30'],
-    night: ['20:00', '20:30', '21:00', '21:30'] // 21:30 تنتهي 23:00 تماماً (إغلاق الملعب)
+    night: ['20:00', '20:30', '21:00', '21:30']
   };
 
   useEffect(() => {
@@ -105,7 +107,6 @@ export default function BookingPage() {
     return slots;
   };
 
-  // فحص التداخل مع الحجوزات السابقة
   const isTimeSlotOverlap = (slotStartStr: string, slotDurationMinutes: number) => {
     const newStart = timeToMinutes(slotStartStr);
     const newEnd = newStart + slotDurationMinutes;
@@ -119,7 +120,7 @@ export default function BookingPage() {
     });
   };
 
-  const basePrice = 200; // سعر الـ 90 دقيقة ثابت
+  const basePrice = 200;
   const extrasPrices = { ball: 20, gloves: 15, vests: 15 };
 
   const calculateTotal = () => {
@@ -354,25 +355,22 @@ export default function BookingPage() {
               />
             </div>
 
-            {/* خيارات مدة المباراة */}
+            {/* مدة المباراة */}
             <div>
               <label className="block text-slate-900 font-bold text-sm mb-2 flex items-center gap-2">
                 <Clock className="w-4 h-4 text-emerald-600" /> مدة المباراة:
               </label>
               <div className="grid grid-cols-3 gap-2">
-                {/* خيار معطل */}
                 <div className="p-2 rounded-xl border border-slate-200 bg-slate-100/60 text-center opacity-60 cursor-not-allowed">
                   <div className="text-xs font-bold text-slate-500">ساعة</div>
                   <div className="text-[10px] font-bold text-amber-600 mt-1">سيتوفر قريباً</div>
                 </div>
 
-                {/* الخيار النشط الوحيد: ساعة ونصف */}
                 <div className="p-2 rounded-xl border-2 border-emerald-600 bg-emerald-50 text-center shadow-sm">
                   <div className="text-xs font-black text-emerald-900">ساعة ونصف</div>
                   <div className="text-xs font-black text-emerald-600 mt-0.5">200 ₪</div>
                 </div>
 
-                {/* خيار معطل */}
                 <div className="p-2 rounded-xl border border-slate-200 bg-slate-100/60 text-center opacity-60 cursor-not-allowed">
                   <div className="text-xs font-bold text-slate-500">ساعتين</div>
                   <div className="text-[10px] font-bold text-amber-600 mt-1">سيتوفر قريباً</div>
@@ -392,33 +390,46 @@ export default function BookingPage() {
               {isLoadingBookings && <span className="text-xs text-emerald-600 font-bold animate-pulse">جاري المزامنة...</span>}
             </div>
 
-            <div className="flex gap-2 mb-4">
+            {/* أزرار التنقل بين الفترات (صباحي / عصريات / ليلي) */}
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => setActivePeriod('morning')}
+                className={`py-2.5 px-2 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                  activePeriod === 'morning' 
+                    ? 'bg-slate-900 text-emerald-400 border-slate-900 shadow'
+                    : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                }`}
+              >
+                <Sun className="w-4 h-4 text-amber-500" /> الصباح والظهيرة
+              </button>
+
               <button
                 type="button"
                 onClick={() => setActivePeriod('afternoon')}
-                className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border transition-all cursor-pointer ${
+                className={`py-2.5 px-2 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
                   activePeriod === 'afternoon' 
                     ? 'bg-slate-900 text-emerald-400 border-slate-900 shadow'
                     : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                 }`}
               >
-                <Sunset className="w-4 h-4" /> فترة العصريات (16:00 - 19:30)
+                <Sunset className="w-4 h-4 text-orange-400" /> العصريات
               </button>
 
               <button
                 type="button"
                 onClick={() => setActivePeriod('night')}
-                className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border transition-all cursor-pointer ${
+                className={`py-2.5 px-2 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
                   activePeriod === 'night' 
                     ? 'bg-slate-900 text-emerald-400 border-slate-900 shadow'
                     : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                 }`}
               >
-                <Moon className="w-4 h-4" /> الفترة الليلية (20:00 - 23:00)
+                <Moon className="w-4 h-4 text-indigo-400" /> الفترة الليلية
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 max-h-72 overflow-y-auto">
               {baseStartSlots[activePeriod].map((time) => {
                 const formattedRange = formatTimeSlot(time, duration);
                 const isSelected = startTime === time;
@@ -448,7 +459,7 @@ export default function BookingPage() {
                 );
               })}
             </div>
-            <p className="text-[11px] text-slate-400 mt-2 text-left font-bold">* الملاعب تغلق تماماً الساعة 11:00 ليلاً.</p>
+            <p className="text-[11px] text-slate-400 mt-2 text-left font-bold">* الملاعب تعمل من 08:00 صباحاً وتغلق تماماً الساعة 11:00 ليلاً.</p>
           </div>
 
           <hr className="border-slate-200" />
