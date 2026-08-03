@@ -17,6 +17,7 @@ import {
   Sun,
   Sunset,
   Moon,
+  MessageSquare,
   Ban
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
@@ -73,7 +74,7 @@ export default function BookingPage() {
     }
   };
 
-  // 1. جلب الحجوزات الحالية من Supabase عند تغيير الملعب أو التاريخ
+  // جلب الحجوزات السابقة
   useEffect(() => {
     async function fetchBookings() {
       setIsLoadingBookings(true);
@@ -97,23 +98,35 @@ export default function BookingPage() {
     fetchBookings();
   }, [selectedStadium, selectedDate]);
 
-  // تحويل الوقت من hh:mm إلى دقائق للتسهيل في الحسابات
   const timeToMinutes = (timeStr: string) => {
     const [h, m] = timeStr.split(':').map(Number);
     return h * 60 + m;
   };
 
-  // 2. خوارزمية فحص تداخل الأوقات (Overlap Check)
+  // حساب الحزم المشتملة عليها فترة الحجز
+  const getSlotSlotsRange = (startStr: string, durMinutes: number) => {
+    const startMins = timeToMinutes(startStr);
+    const endMins = startMins + durMinutes;
+    const slots: string[] = [];
+    
+    for (let m = startMins; m < endMins; m += 30) {
+      const h = Math.floor(m / 60);
+      const mins = m % 60;
+      slots.push(`${String(h).padStart(2, '0')}:${String(mins).padStart(2, '0')}`);
+    }
+    return slots;
+  };
+
+  // فحص تداخل الأوقات
   const isTimeSlotOverlap = (slotStartStr: string, slotDurationMinutes: number) => {
     const newStart = timeToMinutes(slotStartStr);
     const newEnd = newStart + slotDurationMinutes;
 
     return existingBookings.some((b) => {
-      const existingStart = timeToMinutes(b.start_time);
-      const existingDuration = b.duration_minutes || 90; // افتراضي 90 لو مش مخزن
+      const existingStart = timeToMinutes(b.start_slot || b.start_time || '00:00');
+      const existingDuration = b.duration_minutes || 90;
       const existingEnd = existingStart + existingDuration;
 
-      // المعادلة المباشرة لمنع أي تداخل بين فترتين زمنيتين:
       return newStart < existingEnd && newEnd > existingStart;
     });
   };
@@ -149,7 +162,7 @@ export default function BookingPage() {
     return `${start} - ${endHours}:${endMinutes}`;
   };
 
-  // 3. تأكيد وإرسال الحجز بأسماء الأعمدة المطابقة لجدولك في Supabase
+  // معالجة الحجز
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -158,9 +171,8 @@ export default function BookingPage() {
       return;
     }
 
-    // إضافي: التأكد من أن الوقت المختاره لم يُحجز للتو
     if (isTimeSlotOverlap(startTime, duration)) {
-      alert('عذراً! هذا الوقت يتعارض مع حجز آخر تم للتو. يرجى اختيار وقت آخر.');
+      alert('عذراً! هذا الوقت متعارض مع حجز آخر. يرجى اختيار وقت آخر.');
       return;
     }
 
@@ -169,19 +181,20 @@ export default function BookingPage() {
     const stadiumObj = stadiums.find(s => s.id === selectedStadium);
     const formattedTime = formatTimeSlot(startTime, duration);
     const totalPrice = calculateTotal();
+    const reservedSlotsArr = getSlotSlotsRange(startTime, duration);
 
-    // الكائن المبعوث مطابق 100% لأعمدة جدولك
+    // الكائن مطابق 100% لأعمدة جدولك المستخرجة من الصور
     const bookingPayload = {
       court_id: selectedStadium,
+      court_name: stadiumObj?.name,
       customer_name: fullName,
       customer_phone: phone,
       date: selectedDate,
-      start_time: startTime,
+      start_slot: startTime,
       duration_minutes: duration,
-      stadium_name: stadiumObj?.name,
-      time_range: formattedTime,
-      extras: selectedExtras,
+      reserved_slots: reservedSlotsArr,
       total_price: totalPrice,
+      extras: selectedExtras,
     };
 
     try {
@@ -192,12 +205,13 @@ export default function BookingPage() {
         .single();
 
       if (error) {
-        console.error('Supabase error details:', error);
+        console.error('Supabase error:', error);
         alert(`حدث خطأ أثناء حفظ الحجز: ${error.message}`);
       } else {
         setBookingConfirmedData({
           ...bookingPayload,
-          id: data?.id || 'UUID-NEW'
+          id: data?.id || 'UUID-CONFIRMED',
+          time_range: formattedTime
         });
       }
     } catch (err: any) {
@@ -208,19 +222,38 @@ export default function BookingPage() {
     }
   };
 
+  // دالة تحويل رقم الهاتف وتوليد رابط الواتساب
+  const sendWhatsAppReminder = () => {
+    if (!bookingConfirmedData) return;
+
+    // تنظيف رقم الهاتف وإضافة مقدمة الدولة (972+)
+    let formattedPhone = bookingConfirmedData.customer_phone.replace(/[^0-9]/g, '');
+    if (formattedPhone.startsWith('0')) {
+      formattedPhone = '972' + formattedPhone.substring(1);
+    }
+
+    const message = `⚽ *تفاصيل وإيصال حجز الملعب*%0A%0A` +
+      `👤 *الاسم:* ${bookingConfirmedData.customer_name}%0A` +
+      `📍 *الملعب:* ${bookingConfirmedData.court_name}%0A` +
+      `📅 *التاريخ:* ${bookingConfirmedData.date}%0A` +
+      `⏰ *الوقت:* ${bookingConfirmedData.time_range} (${bookingConfirmedData.duration_minutes} دقيقة)%0A` +
+      `💰 *المبلغ النهائي:* ${bookingConfirmedData.total_price} ₪%0A%0A` +
+      `نتمنى لكم مباراة ممتعة! 🏆`;
+
+    window.open(`https://wa.me/${formattedPhone}?text=${message}`, '_blank');
+  };
+
   const handleSendReport = () => {
     if (!reportText.trim()) return alert('الرجاء كتابة تفاصيل البلاغ');
-    
     const currentStadiumName = stadiums.find(s => s.id === selectedStadium)?.name;
     const message = `⚠️ *بلاغ عن مشكلة في ${currentStadiumName}*%0A%0A*التفاصيل:* ${reportText}%0A*التاريخ:* ${selectedDate}`;
-    
     window.open(`https://wa.me/972503477552?text=${message}`, '_blank');
     setShowReportModal(false);
     setReportText('');
   };
 
   // ----------------------------------------------------
-  // شاشة الفاتورة وتأكيد الحجز
+  // شاشة الفاتورة والتأكيد
   // ----------------------------------------------------
   if (bookingConfirmedData) {
     return (
@@ -233,13 +266,13 @@ export default function BookingPage() {
 
           <div>
             <h2 className="text-2xl font-black text-slate-900">تم تأكيد حجزك بنجاح!</h2>
-            <p className="text-xs text-slate-500 mt-1 truncate">معرّف الحجز: {bookingConfirmedData.id}</p>
+            <p className="text-xs text-slate-500 mt-1 truncate">رقم الحجز: {bookingConfirmedData.id}</p>
           </div>
 
           <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200 text-right space-y-3.5 text-sm">
             <div className="flex justify-between items-center border-b pb-2">
               <span className="text-slate-500 font-bold">الملعب:</span>
-              <span className="font-black text-emerald-700 text-base">{bookingConfirmedData.stadium_name}</span>
+              <span className="font-black text-emerald-700 text-base">{bookingConfirmedData.court_name}</span>
             </div>
 
             <div className="flex justify-between items-center border-b pb-2">
@@ -262,35 +295,26 @@ export default function BookingPage() {
               <span className="font-bold text-slate-900">{bookingConfirmedData.customer_phone}</span>
             </div>
 
-            {(bookingConfirmedData.extras?.ball || bookingConfirmedData.extras?.gloves || bookingConfirmedData.extras?.vests) && (
-              <div className="flex justify-between items-center border-b pb-2">
-                <span className="text-slate-500 font-bold">المعدات الإضافية:</span>
-                <span className="font-bold text-slate-800 text-xs">
-                  {[
-                    bookingConfirmedData.extras.ball && 'كرة',
-                    bookingConfirmedData.extras.gloves && 'كفوف',
-                    bookingConfirmedData.extras.vests && 'شيالات'
-                  ].filter(Boolean).join(' + ')}
-                </span>
-              </div>
-            )}
-
             <div className="flex justify-between items-center pt-1">
               <span className="text-slate-900 font-black text-base">المبلغ النهائي للدفع:</span>
               <span className="font-black text-xl text-emerald-600">{bookingConfirmedData.total_price} ₪</span>
             </div>
           </div>
 
-          <p className="text-xs text-slate-500 bg-emerald-50 p-3 rounded-xl border border-emerald-200">
-            يرجى تصوير هذه الشاشة احتياطاً وإبرازها عند الوصول للملعب. نتمنى لكم مباراة ممتعة! ⚽
-          </p>
+          {/* زر إرسال تذكير الواتساب للمستخدم */}
+          <button 
+            onClick={sendWhatsAppReminder}
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg transition-all"
+          >
+            <MessageSquare className="w-5 h-5" /> إرسال إيصال وتذكير الحجز للواتساب
+          </button>
 
           <div className="flex gap-3">
             <button 
               onClick={() => window.print()}
               className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2"
             >
-              <Printer className="w-4 h-4" /> طباعة / حفظ
+              <Printer className="w-4 h-4" /> طباعة
             </button>
 
             <button 
@@ -298,7 +322,7 @@ export default function BookingPage() {
                 setBookingConfirmedData(null);
                 window.location.reload();
               }}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2"
+              className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2"
             >
               <RotateCcw className="w-4 h-4" /> حجز جديد
             </button>
@@ -386,16 +410,15 @@ export default function BookingPage() {
 
           <hr className="border-slate-200" />
 
-          {/* أوقات اللعب وفحص التداخل */}
+          {/* الأوقات وتفادي التداخل */}
           <div>
             <div className="flex justify-between items-center mb-3">
               <label className="text-slate-900 font-bold text-base block">
                 اختر الفترة والوقت المناسب:
               </label>
-              {isLoadingBookings && <span className="text-xs text-emerald-600 font-bold animate-pulse">جاري فحص الحجوزات...</span>}
+              {isLoadingBookings && <span className="text-xs text-emerald-600 font-bold animate-pulse">جاري المزامنة...</span>}
             </div>
 
-            {/* الفترات */}
             <div className="grid grid-cols-3 gap-2 mb-4">
               {(Object.keys(timePeriods) as Array<keyof typeof timePeriods>).map((periodKey) => {
                 const period = timePeriods[periodKey];
@@ -420,13 +443,10 @@ export default function BookingPage() {
               })}
             </div>
 
-            {/* أزرار الساعات مع الحظر الأوتوماتيكي للتداخلات */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200">
               {timePeriods[activePeriod].slots.map((time) => {
                 const formattedRange = formatTimeSlot(time, duration);
                 const isSelected = startTime === time;
-                
-                // فحص إذا كانت السلسلة الزمنية محجوزة جزئياً أو كلياً
                 const isBooked = isTimeSlotOverlap(time, duration);
 
                 return (
@@ -458,7 +478,7 @@ export default function BookingPage() {
 
           <hr className="border-slate-200" />
 
-          {/* المعدات الإضافية */}
+          {/* معدات إضافية */}
           <div>
             <label className="block text-slate-900 font-bold text-base mb-3 flex items-center gap-2">
               <Shirt className="w-5 h-5 text-emerald-600" /> معدات إضافية:
@@ -510,7 +530,7 @@ export default function BookingPage() {
 
           <hr className="border-slate-200" />
 
-          {/* تفاصيل العميل */}
+          {/* معلومات العميل */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-slate-900 font-bold text-sm mb-1.5 flex items-center gap-1.5">
@@ -541,7 +561,7 @@ export default function BookingPage() {
             </div>
           </div>
 
-          {/* ملخص السعر والتأكيد */}
+          {/* الزر والملخص */}
           <div className="bg-slate-900 text-white rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 border border-slate-800 shadow-xl">
             <div>
               <span className="text-slate-400 text-xs font-bold block mb-0.5">المبلغ النهائي:</span>
@@ -578,7 +598,7 @@ export default function BookingPage() {
         </div>
       </main>
 
-      {/* مودال البلاغات */}
+      {/* مودال البلاغ */}
       {showReportModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white text-slate-900 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
