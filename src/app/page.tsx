@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
   Clock, 
@@ -16,19 +16,18 @@ import {
   RotateCcw,
   Sun,
   Sunset,
-  Moon
+  Moon,
+  Ban
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
-// إعداد Supabase Client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function BookingPage() {
-  // الحالة الرئيسية للحجز
   const [selectedStadium, setSelectedStadium] = useState<string>('eloyoun');
-  const [selectedDate, setSelectedDate] = useState('2026-08-03');
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [duration, setDuration] = useState<number>(90);
   const [startTime, setStartTime] = useState<string>('18:00');
   const [activePeriod, setActivePeriod] = useState<'morning' | 'afternoon' | 'night'>('night');
@@ -42,22 +41,20 @@ export default function BookingPage() {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
 
-  // حالات الشاشات والتحميل
+  const [existingBookings, setExistingBookings] = useState<any[]>([]);
+  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookingConfirmedData, setBookingConfirmedData] = useState<any>(null);
 
-  // حالة البلاغ
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportText, setReportText] = useState('');
 
-  // الملاعب بدون أوصاف
   const stadiums = [
     { id: 'eloyoun', name: 'ملعب العيون' },
     { id: 'shaghour', name: 'ملعب الشاغور' },
     { id: 'banyas', name: 'ملعب البانياس' },
   ];
 
-  // تقسيم الساعات إلى فترات لترتيب العرض
   const timePeriods = {
     morning: {
       label: 'صباحاً / ظهراً',
@@ -74,6 +71,51 @@ export default function BookingPage() {
       icon: Moon,
       slots: ['20:00', '20:30', '21:00', '21:30', '22:00', '22:30', '23:00']
     }
+  };
+
+  // 1. جلب الحجوزات الحالية من Supabase عند تغيير الملعب أو التاريخ
+  useEffect(() => {
+    async function fetchBookings() {
+      setIsLoadingBookings(true);
+      try {
+        const { data, error } = await supabase
+          .from('bookings')
+          .select('*')
+          .eq('court_id', selectedStadium)
+          .eq('date', selectedDate);
+
+        if (!error && data) {
+          setExistingBookings(data);
+        }
+      } catch (err) {
+        console.error('Error fetching bookings:', err);
+      } finally {
+        setIsLoadingBookings(false);
+      }
+    }
+
+    fetchBookings();
+  }, [selectedStadium, selectedDate]);
+
+  // تحويل الوقت من hh:mm إلى دقائق للتسهيل في الحسابات
+  const timeToMinutes = (timeStr: string) => {
+    const [h, m] = timeStr.split(':').map(Number);
+    return h * 60 + m;
+  };
+
+  // 2. خوارزمية فحص تداخل الأوقات (Overlap Check)
+  const isTimeSlotOverlap = (slotStartStr: string, slotDurationMinutes: number) => {
+    const newStart = timeToMinutes(slotStartStr);
+    const newEnd = newStart + slotDurationMinutes;
+
+    return existingBookings.some((b) => {
+      const existingStart = timeToMinutes(b.start_time);
+      const existingDuration = b.duration_minutes || 90; // افتراضي 90 لو مش مخزن
+      const existingEnd = existingStart + existingDuration;
+
+      // المعادلة المباشرة لمنع أي تداخل بين فترتين زمنيتين:
+      return newStart < existingEnd && newEnd > existingStart;
+    });
   };
 
   const getBasePrice = (dur: number) => {
@@ -107,12 +149,18 @@ export default function BookingPage() {
     return `${start} - ${endHours}:${endMinutes}`;
   };
 
-  // معالجة تأكيد الحجز وحفظه في Supabase
+  // 3. تأكيد وإرسال الحجز بأسماء الأعمدة المطابقة لجدولك في Supabase
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!fullName.trim() || !phone.trim()) {
       alert('الرجاء إدخال الاسم الكامل ورقم الهاتف');
+      return;
+    }
+
+    // إضافي: التأكد من أن الوقت المختاره لم يُحجز للتو
+    if (isTimeSlotOverlap(startTime, duration)) {
+      alert('عذراً! هذا الوقت يتعارض مع حجز آخر تم للتو. يرجى اختيار وقت آخر.');
       return;
     }
 
@@ -122,22 +170,21 @@ export default function BookingPage() {
     const formattedTime = formatTimeSlot(startTime, duration);
     const totalPrice = calculateTotal();
 
+    // الكائن المبعوث مطابق 100% لأعمدة جدولك
     const bookingPayload = {
-      stadium_id: selectedStadium,
-      stadium_name: stadiumObj?.name,
-      booking_date: selectedDate,
-      start_time: startTime,
-      time_range: formattedTime,
-      duration_minutes: duration,
+      court_id: selectedStadium,
       customer_name: fullName,
       customer_phone: phone,
+      date: selectedDate,
+      start_time: startTime,
+      duration_minutes: duration,
+      stadium_name: stadiumObj?.name,
+      time_range: formattedTime,
       extras: selectedExtras,
       total_price: totalPrice,
-      created_at: new Date().toISOString()
     };
 
     try {
-      // إرسال البيانات إلى جدول 'bookings' في Supabase
       const { data, error } = await supabase
         .from('bookings')
         .insert([bookingPayload])
@@ -145,28 +192,22 @@ export default function BookingPage() {
         .single();
 
       if (error) {
-        console.error('Error inserting booking:', error);
-        alert('حدث خطأ أثناء حفظ الحجز، يرجى المحاولة مرة أخرى.');
+        console.error('Supabase error details:', error);
+        alert(`حدث خطأ أثناء حفظ الحجز: ${error.message}`);
       } else {
-        // عرض صفحة تأكيد الحجز
         setBookingConfirmedData({
           ...bookingPayload,
-          id: data?.id || Math.floor(100000 + Math.random() * 900000)
+          id: data?.id || 'UUID-NEW'
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Submission catch error:', err);
-      // في حال عدم إعداد الجدول بعد، سنعرض النتيجة للعميل لتجربة الواجهة
-      setBookingConfirmedData({
-        ...bookingPayload,
-        id: Math.floor(100000 + Math.random() * 900000)
-      });
+      alert('حدث خطأ بالاتصال بالسيرفر.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // إرسال البلاغ للواتساب
   const handleSendReport = () => {
     if (!reportText.trim()) return alert('الرجاء كتابة تفاصيل البلاغ');
     
@@ -179,7 +220,7 @@ export default function BookingPage() {
   };
 
   // ----------------------------------------------------
-  // 1. صفحة تفاصيل تأكيد الحجز (Success Confirmation View)
+  // شاشة الفاتورة وتأكيد الحجز
   // ----------------------------------------------------
   if (bookingConfirmedData) {
     return (
@@ -192,10 +233,9 @@ export default function BookingPage() {
 
           <div>
             <h2 className="text-2xl font-black text-slate-900">تم تأكيد حجزك بنجاح!</h2>
-            <p className="text-xs text-slate-500 mt-1">رقم مرجع الحجز: #{bookingConfirmedData.id}</p>
+            <p className="text-xs text-slate-500 mt-1 truncate">معرّف الحجز: {bookingConfirmedData.id}</p>
           </div>
 
-          {/* تفاصيل الكرت */}
           <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200 text-right space-y-3.5 text-sm">
             <div className="flex justify-between items-center border-b pb-2">
               <span className="text-slate-500 font-bold">الملعب:</span>
@@ -204,7 +244,7 @@ export default function BookingPage() {
 
             <div className="flex justify-between items-center border-b pb-2">
               <span className="text-slate-500 font-bold">التاريخ:</span>
-              <span className="font-bold text-slate-900">{bookingConfirmedData.booking_date}</span>
+              <span className="font-bold text-slate-900">{bookingConfirmedData.date}</span>
             </div>
 
             <div className="flex justify-between items-center border-b pb-2">
@@ -222,8 +262,7 @@ export default function BookingPage() {
               <span className="font-bold text-slate-900">{bookingConfirmedData.customer_phone}</span>
             </div>
 
-            {/* المعدات */}
-            {(bookingConfirmedData.extras.ball || bookingConfirmedData.extras.gloves || bookingConfirmedData.extras.vests) && (
+            {(bookingConfirmedData.extras?.ball || bookingConfirmedData.extras?.gloves || bookingConfirmedData.extras?.vests) && (
               <div className="flex justify-between items-center border-b pb-2">
                 <span className="text-slate-500 font-bold">المعدات الإضافية:</span>
                 <span className="font-bold text-slate-800 text-xs">
@@ -243,7 +282,7 @@ export default function BookingPage() {
           </div>
 
           <p className="text-xs text-slate-500 bg-emerald-50 p-3 rounded-xl border border-emerald-200">
-            يرجى تصوير هذه الشاشة احتواطاً أو إبرازها عند الوصول للملعب. نتمنى لكم مباراة ممتعة! ⚽
+            يرجى تصوير هذه الشاشة احتياطاً وإبرازها عند الوصول للملعب. نتمنى لكم مباراة ممتعة! ⚽
           </p>
 
           <div className="flex gap-3">
@@ -255,7 +294,10 @@ export default function BookingPage() {
             </button>
 
             <button 
-              onClick={() => setBookingConfirmedData(null)}
+              onClick={() => {
+                setBookingConfirmedData(null);
+                window.location.reload();
+              }}
               className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2"
             >
               <RotateCcw className="w-4 h-4" /> حجز جديد
@@ -267,13 +309,9 @@ export default function BookingPage() {
     );
   }
 
-  // ----------------------------------------------------
-  // 2. الواجهة الرئيسية لنموذج الحجز
-  // ----------------------------------------------------
   return (
     <div dir="rtl" className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-24">
       
-      {/* Header */}
       <header className="relative bg-gradient-to-b from-emerald-900 to-slate-900 pt-10 pb-16 px-4 text-center border-b border-emerald-500/20">
         <div className="max-w-3xl mx-auto">
           <span className="inline-flex items-center gap-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-full text-xs font-bold mb-4">
@@ -285,11 +323,10 @@ export default function BookingPage() {
         </div>
       </header>
 
-      {/* Main Container */}
       <main className="max-w-4xl mx-auto px-4 -mt-8">
         <form onSubmit={handleBookingSubmit} className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 border border-slate-200 text-slate-900 space-y-8">
           
-          {/* Section 0: اختيار الملعب (أسماء فقط بدون أوصاف) */}
+          {/* اختيار الملعب */}
           <div>
             <label className="block text-slate-900 font-black text-base mb-3 flex items-center gap-2">
               <MapPin className="w-5 h-5 text-emerald-600" /> اختر الملعب:
@@ -317,7 +354,7 @@ export default function BookingPage() {
 
           <hr className="border-slate-200" />
 
-          {/* Section 1: التاريخ والمدة */}
+          {/* التاريخ والمدة */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-slate-900 font-bold text-sm mb-2 flex items-center gap-2">
@@ -333,7 +370,7 @@ export default function BookingPage() {
 
             <div>
               <label className="block text-slate-900 font-bold text-sm mb-2 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-emerald-600" /> مدة الحجز والسعر:
+                <Clock className="w-4 h-4 text-emerald-600" /> مدة اللعب:
               </label>
               <select 
                 value={duration}
@@ -349,13 +386,16 @@ export default function BookingPage() {
 
           <hr className="border-slate-200" />
 
-          {/* Section 2: اختيار الوقت بطريقة مقسمة ومريحة جداً */}
+          {/* أوقات اللعب وفحص التداخل */}
           <div>
-            <label className="text-slate-900 font-bold text-base mb-3 block">
-              اختر الفترة والوقت المناسب:
-            </label>
+            <div className="flex justify-between items-center mb-3">
+              <label className="text-slate-900 font-bold text-base block">
+                اختر الفترة والوقت المناسب:
+              </label>
+              {isLoadingBookings && <span className="text-xs text-emerald-600 font-bold animate-pulse">جاري فحص الحجوزات...</span>}
+            </div>
 
-            {/* أزرار الفترات */}
+            {/* الفترات */}
             <div className="grid grid-cols-3 gap-2 mb-4">
               {(Object.keys(timePeriods) as Array<keyof typeof timePeriods>).map((periodKey) => {
                 const period = timePeriods[periodKey];
@@ -380,24 +420,36 @@ export default function BookingPage() {
               })}
             </div>
 
-            {/* شبكة الأوقات للفترة المحددة */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 p-2 bg-slate-50 rounded-2xl border border-slate-200">
+            {/* أزرار الساعات مع الحظر الأوتوماتيكي للتداخلات */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200">
               {timePeriods[activePeriod].slots.map((time) => {
                 const formattedRange = formatTimeSlot(time, duration);
                 const isSelected = startTime === time;
+                
+                // فحص إذا كانت السلسلة الزمنية محجوزة جزئياً أو كلياً
+                const isBooked = isTimeSlotOverlap(time, duration);
 
                 return (
                   <button
                     key={time}
                     type="button"
+                    disabled={isBooked}
                     onClick={() => setStartTime(time)}
-                    className={`p-3 rounded-xl text-xs sm:text-sm font-black border transition-all text-center flex flex-col items-center justify-center gap-1 cursor-pointer ${
-                      isSelected 
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-md scale-[1.02]' 
-                        : 'bg-white text-slate-900 border-slate-300 hover:border-emerald-500 hover:bg-emerald-50'
+                    className={`p-3 rounded-xl text-xs sm:text-sm font-black border transition-all text-center flex flex-col items-center justify-center gap-1 ${
+                      isBooked
+                        ? 'bg-rose-50 text-rose-300 border-rose-200 cursor-not-allowed opacity-60 line-through'
+                        : isSelected 
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-md scale-[1.02] cursor-pointer' 
+                          : 'bg-white text-slate-900 border-slate-300 hover:border-emerald-500 hover:bg-emerald-50 cursor-pointer'
                     }`}
                   >
-                    <span>{formattedRange}</span>
+                    {isBooked ? (
+                      <span className="flex items-center gap-1 text-rose-400">
+                        <Ban className="w-3.5 h-3.5" /> محجوز ({time})
+                      </span>
+                    ) : (
+                      <span>{formattedRange}</span>
+                    )}
                   </button>
                 );
               })}
@@ -406,7 +458,7 @@ export default function BookingPage() {
 
           <hr className="border-slate-200" />
 
-          {/* Section 3: المعدات الإضافية */}
+          {/* المعدات الإضافية */}
           <div>
             <label className="block text-slate-900 font-bold text-base mb-3 flex items-center gap-2">
               <Shirt className="w-5 h-5 text-emerald-600" /> معدات إضافية:
@@ -458,7 +510,7 @@ export default function BookingPage() {
 
           <hr className="border-slate-200" />
 
-          {/* Section 4: معلومات الحاجز */}
+          {/* تفاصيل العميل */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-slate-900 font-bold text-sm mb-1.5 flex items-center gap-1.5">
@@ -489,7 +541,7 @@ export default function BookingPage() {
             </div>
           </div>
 
-          {/* Summary Card & Submit */}
+          {/* ملخص السعر والتأكيد */}
           <div className="bg-slate-900 text-white rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 border border-slate-800 shadow-xl">
             <div>
               <span className="text-slate-400 text-xs font-bold block mb-0.5">المبلغ النهائي:</span>
@@ -504,17 +556,16 @@ export default function BookingPage() {
 
             <button 
               type="submit"
-              disabled={isSubmitting}
-              className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-base px-8 py-3.5 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
+              disabled={isSubmitting || isTimeSlotOverlap(startTime, duration)}
+              className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-base px-8 py-3.5 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <CheckCircle2 className="w-5 h-5" /> 
-              {isSubmitting ? 'جاري التأكيد...' : 'تأكيد وإرسال الحجز'}
+              {isSubmitting ? 'جاري الحفظ...' : 'تأكيد وإرسال الحجز'}
             </button>
           </div>
 
         </form>
 
-        {/* Footer Actions */}
         <div className="mt-6 flex flex-wrap items-center justify-between gap-4 text-slate-400 text-xs px-2">
           <button 
             type="button"
@@ -523,12 +574,11 @@ export default function BookingPage() {
           >
             <ShieldAlert className="w-4 h-4" /> الإبلاغ عن مشكلة بالملعب
           </button>
-
           <span>© إدارات ملاعب أم الفحم</span>
         </div>
       </main>
 
-      {/* Report Modal */}
+      {/* مودال البلاغات */}
       {showReportModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white text-slate-900 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
@@ -539,7 +589,7 @@ export default function BookingPage() {
               rows={4}
               value={reportText}
               onChange={(e) => setReportText(e.target.value)}
-              placeholder="اكتب تفاصيل المشكلة أو العطل..."
+              placeholder="اكتب تفاصيل المشكلة..."
               className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-sm text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-rose-500"
             />
             <div className="flex items-center justify-end gap-2">
